@@ -23,7 +23,6 @@ export default class Task extends React.Component {
   }
 
   componentWillUnmount() {
-    // TODO: Find out if componentWillUnmount is called on server environments.
     this.proc.stop();
 
     this.taskWasStopped();
@@ -239,7 +238,7 @@ delay(7000).then(() => proc3.stop());
 import ReactDOM from 'react-dom';
 
 const state = { counters: [] };
-const container = document.getElementById('app-container');
+const appContainer = document.getElementById('app-container');
 const taskContainer = document.createElement('div');
 
 function render() {
@@ -249,30 +248,70 @@ function render() {
 
   // NOTE: You can just render your tasks alongside regular components, but
   // it's probably a bad idea because then you won't be able to do a render
-  // without side effects.
+  // without side effects. (However, <Tasks> will not be run when using server
+  // rendering because componentDidMount and componentWillUnmount don't get
+  // called. They should just render to empty strings without causing side
+  // effects.)
   //const counterTasks = state.counters.map((counter, index) => <CounterTask key={index} id={index} />);
 
   ReactDOM.render(
     <div>
-      <ul>{counterList}</ul>
+      <p><button onClick={addCounter}>Add Counter</button></p>
 
-      <p><button onClick={addCounter}>Add</button></p>
+      <ul>{counterList}</ul>
 
       {/*counterTasks*/}
     </div>,
-    container
+    appContainer
   );
 
-  // Instead it's probably better to make a component to manage all of your tasks
-  // and render that separately.
-  ReactDOM.render(<TaskManager counters={state.counters} />, taskContainer);
+  // Instead it's probably better to make a component to manage all of your
+  // tasks and render that separately. You can render it to an element that
+  // isn't attached to the DOM so that your task hierarchy doesn't add a bunch
+  // of empty <div>s to your DOM.
+  ReactDOM.render(<TaskManager state={state} />, taskContainer);
 }
 
-function TaskManager({ counters }) {
+function TaskManager({ state }) {
   const counterTasks = state.counters.map((counter, index) => <CounterTask key={index} id={index} />);
 
   return <div>{counterTasks}</div>;
 }
+
+class CounterTask extends Task {
+  *run() {
+    const { id } = this.props;
+
+    // It's okay to have an infinite loop inside a task as long as it yields
+    // inside the loop. The Proc running the task will be stopped when the Task
+    // component gets unmounted.
+    while (true) {
+      yield Proc.call(delay, 1000);
+      yield Proc.call(incrementCounter, id);
+    }
+  }
+
+  taskWasStopped() {
+    console.log('taskWasStopped');
+  }
+}
+
+//
+// If you don't need to use the taskWasStopped() method, you can just use a
+// generator function that takes the props as an argument, similar to React's
+// stateless components:
+//
+// function *CounterGenerator({ id }) {
+//   while (true) {
+//     yield Proc.call(delay, 1000);
+//     yield Proc.call(incrementCounter, id);
+//   }
+// }
+//
+// Then you can run this generator using the generic Task component:
+//
+// <Task generator={CounterGenerator} id={id} />
+//
 
 function addCounter() {
   state.counters.push({ count: 0 });
@@ -300,24 +339,6 @@ function removeCounter(id) {
   render();
 }
 
-class CounterTask extends Task {
-  *run() {
-    const { id } = this.props;
-
-    // It's okay to have an infinite loop inside a task as long as it yields
-    // inside the loop. The Proc running the task will be stopped when the Task
-    // component gets unmounted.
-    while (true) {
-      yield Proc.call(delay, 1000);
-      yield Proc.call(incrementCounter, id);
-    }
-  }
-
-  taskWasStopped() {
-    console.log('taskWasStopped');
-  }
-}
-
 render();
 
 // Testing Tasks:
@@ -326,19 +347,21 @@ render();
 // because Proc only supports call/apply effects.
 import deepEqual from 'deep-equal';
 
+function assert(value) {
+  if (!value) {
+    throw new Error('Assertion failed');
+  }
+}
+
 const task = new CounterTask({ id: 123 });
 const gen = task.run();
 
 for (let i = 0; i < 10; i++) {
-  if (!deepEqual(gen.next().value, Proc.call(delay, 1000))) {
-    throw new Error('Test failed');
-  }
-  if (!deepEqual(gen.next().value, Proc.call(incrementCounter, 123))) {
-    throw new Error('Test failed');
-  }
+  assert(deepEqual(gen.next().value, Proc.call(delay, 1000)));
+  assert(deepEqual(gen.next(undefined).value, Proc.call(incrementCounter, 123)));
 }
-console.log('Tests passed');
 
+//
 // It should also be possible to make some kind of helpers for testing
 // tasks/procs, similar to https://github.com/jfairbank/redux-saga-test-plan:
 //
@@ -346,16 +369,38 @@ console.log('Tests passed');
 //
 // for (let i = 0; i < 10; i++) {
 //   // These methods would throw an error if the task's yielded calls don't match.
-//   task
-//   .calls(delay, 1000).returns(undefined)
-//   .calls(incrementCounter, 123).returns(undefined);
+//   task.calls(delay, 1000).calls(incrementCounter, 123);
 // }
 //
+
 // To test whether or not the correct tasks are being run for the given state,
-// you could just use shallow rendering to make sure the Task components are
-// being rendered with the correct props:
+// you could just use shallow rendering to make sure the correct Task
+// components are being rendered:
 import ReactTestUtils from 'react-addons-test-utils';
 
 const renderer = ReactTestUtils.createRenderer();
-renderer.render(<TaskManager counters={[{ count: 123 }]} />);
-// TODO
+renderer.render(<TaskManager state={{ counters: [{ count: 123 }] }} />);
+const tasks = renderer.getRenderOutput().props.children;
+
+assert(deepEqual(tasks, [<CounterTask key={0} id={0} />]));
+
+// Server rendering should also work without causing side effects:
+import ReactDOMServer from 'react-dom/server';
+
+function ServerTest(props) {
+  const fail = function *(props) {
+    throw 'fail';
+  };
+
+  return <Task generator={fail} />;
+}
+
+// This shouldn't throw an error:
+assert(ReactDOMServer.renderToStaticMarkup(<ServerTest />) === '');
+
+// This should throw an error:
+try {
+  console.log(ReactDOM.render(<ServerTest />, document.createElement('div')));
+} catch (error) {
+  assert(error === 'fail');
+}
