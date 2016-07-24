@@ -310,8 +310,9 @@ class TaskTester {
 
 // Examples
 // --------
-import ReactTestUtils from 'react-addons-test-utils';
+import ReactDOM from 'react-dom';
 import ReactDOMServer from 'react-dom/server';
+import ReactTestUtils from 'react-addons-test-utils';
 
 function assert(value) {
   if (!value) {
@@ -357,8 +358,6 @@ function procExample() {
 }
 
 // Task:
-import ReactDOM from 'react-dom';
-
 function taskExample() {
   const state = { counters: [] };
   const appContainer = document.getElementById('app-container');
