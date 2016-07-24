@@ -2,14 +2,25 @@ import 'babel-polyfill';
 import React from 'react';
 import deepEqual from 'deep-equal';
 
-function throwIfHasChildren(children) {
-  if (React.Children.count(children) !== 0) {
-    throw new TypeError('Task components should not have any children. If you ' +
-        'want to organize tasks in a hierarchy, use normal elements like <div>, ' +
-        '<span>, etc.');
-  }
-}
-
+/**
+ * <Task generator={...} ... />
+ *
+ * A Task component starts a Proc (which is basically a background process that
+ * runs a generator function) when it gets mounted, and stops the Proc when it
+ * gets unmounted.
+ *
+ * To define a Task, create a new class that extends Task and overrides the
+ * *run() generator method. You may also override the taskWasStopped() method
+ * if you want to do cleanup when the Task gets unmounted.
+ *
+ * Alternatively, you can just pass a generator function to the "generator"
+ * prop, and all other props will be passed as the first argument to the
+ * function.
+ *
+ * NOTE: A Task will only stop its Proc when it gets unmounted or the generator
+ * prop is changed. To restart a Task with new props, pass a unique "key" prop,
+ * which will force React to unmount the Task when the key changes.
+ */
 export default class Task extends React.Component {
   // Start a Proc (which is basically a background process that runs a
   // generator function) when the Task component gets mounted, and stop the
@@ -23,19 +34,35 @@ export default class Task extends React.Component {
     this.proc.start();
   }
 
+  componentWillReceiveProps(nextProps) {
+    if (this.props.generator !== nextProps.generator) {
+      // If the generator has changed, stop the old Proc and start a new one.
+      this.proc.stop();
+      this.proc = new Proc(nextProps.generator, this.props);
+      this.proc.start();
+    } else if (process.env.NODE_ENV !== 'production') {
+      // If the generator hasn't changed but the other props have, consider
+      // that an error, because it's not clear whether the Proc should be
+      // restarted or not.
+      //
+      // Don't run this check on production because it requires a deepEqual
+      // which could become slow, and because it's probably better to just let
+      // the app continue running and hope it still works despite the ambiguity
+      // than to always throw an error.
+      if (!deepEqual(this.props, nextProps)) {
+        throw new Error('Task received new props with the same generator. ' +
+            'To restart the Task with the new props, pass a new "key" prop. To ' +
+            'pass new information to the Task during its execution without ' +
+            'restarting it, yield a call to a function that returns that ' +
+            'information within its generator.');
+      }
+    }
+  }
+
   componentWillUnmount() {
     this.proc.stop();
 
     this.taskWasStopped();
-  }
-
-  // Never allow Tasks components to have children.
-  componentWillMount() {
-    throwIfHasChildren(this.props.children);
-  }
-
-  componentWillReceiveProps(nextProps) {
-    throwIfHasChildren(nextProps.children);
   }
 
   // Task components never render anything by default.
@@ -48,10 +75,11 @@ export default class Task extends React.Component {
   }
 
   // Methods that should be overriden by child classes:
+  // --------------------------------------------------
 
   // Generator method that performs side effects by yielding calls to Proc.call/apply.
   *run() {
-    throw new Error('Task: run() method must be overriden by subclasses, or a ' +
+    throw new Error('Subclasses of Task must override the run() method, or a ' +
         'generator={...} prop must be passed to the Task component.');
   }
 
@@ -61,8 +89,18 @@ export default class Task extends React.Component {
 
 Task.propTypes = {
   generator: React.PropTypes.func,
+  children: (props, propName, componentName) => {
+    if (props[propName]) {
+      return new Error('Task components should not have any children. To organize ' +
+          'tasks in a hierarchy, use normal elements like <div>, <span>, etc.');
+    }
+  },
 };
 
+
+
+// Proc
+// ----
 export class Proc {
   constructor(generatorFn, ...args) {
     this.generatorFn = generatorFn;
@@ -83,13 +121,13 @@ export class Proc {
           typeof this.generator.next === 'function' &&
           typeof this.generator.throw === 'function' &&
           typeof this.generator.return === 'function')) {
-      throw new TypeError(`Proc: function supplied did not return a generator: ${this.generator}`);
+      throw new Error(`Proc: function supplied did not return a generator: ${this.generator}`);
     }
 
-    this.continueExecution(undefined, false);
+    this._continueExecution(undefined, false);
   }
 
-  continueExecution(returnedValue, isError) {
+  _continueExecution(returnedValue, isError) {
     // Send the previous call's return value to the generator and get the next
     // value that the generator yields, which should be a call object.
     const generatorResult = isError ?
@@ -106,7 +144,7 @@ export class Proc {
     // valid call object.
     if (!Proc.isCall(generatorResult.value)) {
       this.stop();
-      throw new TypeError(`Proc: value yielded by generator was not a valid call object: ${generatorResult.value}`);
+      throw new Error(`Proc: value yielded by generator was not a valid call object: ${generatorResult.value}`);
     }
 
     // Actually call the function and make the generator handle any errors.
@@ -115,7 +153,7 @@ export class Proc {
     try {
       callResult = Proc.doCall(generatorResult.value);
     } catch (error) {
-      this.continueExecution(error, true);
+      this._continueExecution(error, true);
       return;
     }
 
@@ -124,9 +162,9 @@ export class Proc {
     // promises to work normally.
     const promise = Promise.resolve(callResult);
     promise.then(result => {
-      this.continueExecution(result, false);
+      this._continueExecution(result, false);
     }).catch(error => {
-      this.continueExecution(error, true);
+      this._continueExecution(error, true);
     });
 
     // Save the returned promise's cancel method if it has one.
@@ -144,7 +182,7 @@ export class Proc {
     }
 
     // The will cause all future calls to this.generator.next() to return {
-    // value: undefined, done: true }, which will let continueExecution know
+    // value: undefined, done: true }, which will let _continueExecution know
     // that it should stop.
     this.generator.return();
     this.generator = null;
@@ -155,11 +193,6 @@ export class Proc {
       this.lastPromise[Proc.CANCEL_PROMISE]();
       this.lastPromise = null;
     }
-  }
-
-  restart() {
-    this.stop();
-    this.start();
   }
 }
 
