@@ -121,7 +121,7 @@ export class Proc {
           typeof this.generator.next === 'function' &&
           typeof this.generator.throw === 'function' &&
           typeof this.generator.return === 'function')) {
-      throw new Error(`Proc: function supplied did not return a generator: ${this.generator}`);
+      throw new Error(`Function supplied to Proc did not return a generator: ${this.generator}`);
     }
 
     this._continueExecution(undefined, false);
@@ -144,7 +144,7 @@ export class Proc {
     // valid call object.
     if (!Proc.isCall(generatorResult.value)) {
       this.stop();
-      throw new Error(`Proc: value yielded by generator was not a valid call object: ${generatorResult.value}`);
+      throw new Error(`Value yielded by generator was not a valid Proc.call object: ${generatorResult.value}`);
     }
 
     // Actually call the function and make the generator handle any errors.
@@ -221,6 +221,93 @@ Proc.CANCEL_PROMISE = 'Proc/cancelPromise';
 
 
 
+// TaskTester
+// ----------
+class TaskTester {
+  constructor(element) {
+    // TODO: Find out why this doesn't work without .prototype
+    if (!(element.type.prototype instanceof Task)) {
+      throw new Error('Element given to TaskTester was not an instance of Task.');
+    }
+
+    this.generator = element.props.generator ?
+      element.props.generator(element.props) :
+      (new element.type(element.props)).run();
+  }
+
+  /**
+   * Throws an error if the next call object that the generator yields doesn't
+   * match the given function and arguments.
+   */
+  calls(fn, ...args) {
+    return this.applies(undefined, fn, args);
+  }
+
+  /**
+   * Throws an error if the next call object that the generator yields doesn't
+   * match the given context, function, and arguments.
+   */
+  applies(context, fn, args) {
+    const result = this._next();
+    const expectedResult = { done: false, value: Proc.apply(context, fn, args) };
+
+    if (!deepEqual(result, expectedResult)) {
+      throw new Error('Task did not yield expected value.');
+    }
+
+    return this;
+  }
+
+  _next() {
+    if (this.nextReturnValue) {
+      const { value, isError } = this.nextReturnValue;
+      this.nextReturnValue = null;
+
+      return isError ?
+        this.generator.throw(value) :
+        this.generator.next(value);
+    } else {
+      return this.generator.next();
+    }
+  }
+
+  /**
+   * Causes the given value to be passed to this.generator.next() the next time
+   * calls() or applies() is called.
+   */
+  returns(value) {
+    this.nextReturnValue = { value, isError: false };
+
+    return this;
+  }
+
+  /**
+   * Causes the given value to be passed to this.generator.throw() the next
+   * time calls() or applies() is called.
+   */
+  throws(error) {
+    this.nextReturnValue = { value: error, isError: true };
+
+    return this;
+  }
+
+  /**
+   * Throws an error if the generator yields another value instead of returning
+   * or ending.
+   */
+  ends() {
+    const result = this.generator.next();
+
+    if (result.done !== true) {
+      throw new Error('Task did not end.');
+    }
+
+    return this;
+  }
+}
+
+
+
 // Examples
 // --------
 import ReactTestUtils from 'react-addons-test-utils';
@@ -280,7 +367,7 @@ function taskExample() {
   const render = () => {
     ReactDOM.render(<App state={state} />, appContainer);
 
-    // Render the tasks in an unattached element so that they don't modify the visible actual DOM.
+    // Render the tasks in an unattached element so that they don't modify the visible DOM.
     ReactDOM.render(<AppTasks state={state} />, taskContainer);
   };
 
@@ -297,12 +384,15 @@ function taskExample() {
       {/*
         * NOTE: You could just render your tasks alongside regular components like this:
         *
-        * <AppTasks state={state} />
+
+      <AppTasks state={state} />
+
         *
         * But it's probably a bad idea, because then you won't be able to render
         * on the client without causing side effects.
         *
-        * Instead it's probably better render all of your tasks separately from your UI, like in render() above.
+        * Instead it's probably better to render all of your tasks separately
+        * from your UI, like in render() above.
         *
         */}
     </div>;
@@ -379,8 +469,7 @@ function taskExample() {
   function testTaskExample() {
     // To test a single Task, you can iterate through its generator and compare
     // against the call objects it yields, just like Redux Sagas, but simpler
-    // because Proc only supports call/apply effects.
-
+    // because Proc only supports call/apply effects:
     const task = new CounterTask({ id: 123 });
     const gen = task.run();
 
@@ -389,17 +478,12 @@ function taskExample() {
       assert(deepEqual(gen.next(undefined).value, Proc.call(incrementCounter, 123)));
     }
 
-    //
-    // It should also be possible to make some kind of helpers for testing
-    // tasks/procs, similar to https://github.com/jfairbank/redux-saga-test-plan:
-    //
-    // const task = TaskTester(CounterTask, { id: 123 });
-    //
-    // for (let i = 0; i < 10; i++) {
-    //   // These methods would throw an error if the task's yielded calls don't match.
-    //   task.calls(delay, 1000).calls(incrementCounter, 123);
-    // }
-    //
+    // The same test using a helper for testing tasks:
+    const taskTester = new TaskTester(<CounterTask id={123} />);
+
+    for (let i = 0; i < 10; i++) {
+      taskTester.calls(delay, 1000).calls(incrementCounter, 123);
+    }
 
     // To test whether or not the correct tasks are being run for the given
     // state, you can just use shallow rendering to make sure the correct Task
@@ -408,7 +492,7 @@ function taskExample() {
     renderer.render(<AppTasks state={{ counters: [{ count: 123 }] }} />);
     const tasks = renderer.getRenderOutput().props.children;
 
-    //assert(deepEqual(tasks, [<CounterTask key={0} id={0} />]));
+    assert(deepEqual(tasks, [<CounterTask key={0} id={0} />]));
   }
 
   render();
