@@ -1,5 +1,6 @@
 import 'babel-polyfill';
 import React from 'react';
+import deepEqual from 'deep-equal';
 
 function throwIfHasChildren(children) {
   if (React.Children.count(children) !== 0) {
@@ -187,9 +188,17 @@ Proc.CANCEL_PROMISE = 'Proc/cancelPromise';
 
 
 
-// Simple usage examples
-// ---------------------
-// Promise canceling:
+// Examples
+// --------
+import ReactTestUtils from 'react-addons-test-utils';
+import ReactDOMServer from 'react-dom/server';
+
+function assert(value) {
+  if (!value) {
+    throw new Error('Assertion failed');
+  }
+}
+
 function delay(timeout) {
   let timeoutId;
 
@@ -198,209 +207,205 @@ function delay(timeout) {
   });
 
   promise[Proc.CANCEL_PROMISE] = () => {
-    console.log('Promise cancelled');
     clearTimeout(timeoutId);
   };
 
   return promise;
 }
 
-const p = delay(1000);
-p.then(() => console.log('hi'));
-p[Proc.CANCEL_PROMISE]();
-
 // Proc:
-function *counter(name, timeout) {
-  let count = 0;
+function procExample() {
+  const counter = function *(name, timeout) {
+    let count = 0;
 
-  while (count < 5) {
-    yield Proc.call(delay, timeout);
-    count += 1;
-    console.log(`${name}: ${count}`);
-  }
+    while (count < 5) {
+      yield Proc.call(delay, timeout);
+      count += 1;
+      console.log(`${name}: ${count}`);
+    }
 
-  console.log(`${name} ended`);
+    console.log(`${name} ended`);
+  };
+
+  const proc1 = new Proc(counter, 'normal', 1000);
+  proc1.start();
+
+  const proc2 = new Proc(counter, 'stopped prematurely', 1000);
+  proc2.stop();
+  proc2.start();
+  delay(1000).then(() => proc2.stop());
 }
-
-const proc1 = new Proc(counter, 'normal', 1000);
-proc1.start();
-
-const proc2 = new Proc(counter, 'stopped prematurely', 1000);
-proc2.stop();
-proc2.start();
-delay(1000).then(() => proc2.stop());
-
-const proc3 = new Proc(counter, 'stopped after end', 1000);
-proc3.start();
-delay(7000).then(() => proc3.stop());
 
 // Task:
 import ReactDOM from 'react-dom';
 
-const state = { counters: [] };
-const appContainer = document.getElementById('app-container');
-const taskContainer = document.createElement('div');
+function taskExample() {
+  const state = { counters: [] };
+  const appContainer = document.getElementById('app-container');
+  const taskContainer = document.createElement('div');
 
-function render() {
-  const counterList = state.counters.map((counter, index) => {
-    return <li key={index}>Counter {index}: {counter.count} <button onClick={() => removeCounter(index)}>Remove</button></li>;
-  });
+  const render = () => {
+    ReactDOM.render(<App state={state} />, appContainer);
 
-  // NOTE: You can just render your tasks alongside regular components, but
-  // it's probably a bad idea because then you won't be able to do a render
-  // without side effects. (However, <Tasks> will not be run when using server
-  // rendering because componentDidMount and componentWillUnmount don't get
-  // called. They should just render to empty strings without causing side
-  // effects.)
-  //const counterTasks = state.counters.map((counter, index) => <CounterTask key={index} id={index} />);
+    // Render the tasks in an unattached element so that they don't modify the visible actual DOM.
+    ReactDOM.render(<AppTasks state={state} />, taskContainer);
+  };
 
-  ReactDOM.render(
-    <div>
+  const App = ({ state }) => {
+    const counterList = state.counters.map((counter, index) => {
+      return <li key={index}>Counter {index}: {counter.count} <button onClick={() => removeCounter(index)}>Remove</button></li>;
+    });
+
+    return <div>
       <p><button onClick={addCounter}>Add Counter</button></p>
 
       <ul>{counterList}</ul>
 
-      {/*counterTasks*/}
-    </div>,
-    appContainer
-  );
-
-  // Instead it's probably better to make a component to manage all of your
-  // tasks and render that separately. You can render it to an element that
-  // isn't attached to the DOM so that your task hierarchy doesn't add a bunch
-  // of empty <div>s to your DOM.
-  ReactDOM.render(<TaskManager state={state} />, taskContainer);
-}
-
-function TaskManager({ state }) {
-  const counterTasks = state.counters.map((counter, index) => <CounterTask key={index} id={index} />);
-
-  return <div>{counterTasks}</div>;
-}
-
-class CounterTask extends Task {
-  *run() {
-    const { id } = this.props;
-
-    // It's okay to have an infinite loop inside a task as long as it yields
-    // inside the loop. The Proc running the task will be stopped when the Task
-    // component gets unmounted.
-    while (true) {
-      yield Proc.call(delay, 1000);
-      yield Proc.call(incrementCounter, id);
-    }
-  }
-
-  taskWasStopped() {
-    console.log('taskWasStopped');
-  }
-}
-
-//
-// If you don't need to use the taskWasStopped() method, you can just use a
-// generator function that takes the props as an argument, similar to React's
-// stateless components:
-//
-// function *CounterGenerator({ id }) {
-//   while (true) {
-//     yield Proc.call(delay, 1000);
-//     yield Proc.call(incrementCounter, id);
-//   }
-// }
-//
-// Then you can run this generator using the generic Task component:
-//
-// <Task generator={CounterGenerator} id={id} />
-//
-
-function addCounter() {
-  state.counters.push({ count: 0 });
-
-  render();
-}
-
-function incrementCounter(id) {
-  state.counters[id].count += 1;
-
-  render();
-}
-
-function removeCounter(id) {
-  // NOTE: Because we just delete the counter at the given index, the length of
-  // the array doesn't decrease so new counters always get a unique id and we
-  // don't have to worry about new counters using the same id as an old,
-  // removed counter.
-  //
-  // So in this case it works to just use an array, but in a real app you
-  // should really give your tasks proper keys instead of just using an array
-  // index.
-  delete state.counters[id];
-
-  render();
-}
-
-render();
-
-// Testing Tasks:
-// To test a single Task, you can iterate through its generator and compare
-// against the call objects it yields, just like Redux Sagas, but simpler
-// because Proc only supports call/apply effects.
-import deepEqual from 'deep-equal';
-
-function assert(value) {
-  if (!value) {
-    throw new Error('Assertion failed');
-  }
-}
-
-const task = new CounterTask({ id: 123 });
-const gen = task.run();
-
-for (let i = 0; i < 10; i++) {
-  assert(deepEqual(gen.next().value, Proc.call(delay, 1000)));
-  assert(deepEqual(gen.next(undefined).value, Proc.call(incrementCounter, 123)));
-}
-
-//
-// It should also be possible to make some kind of helpers for testing
-// tasks/procs, similar to https://github.com/jfairbank/redux-saga-test-plan:
-//
-// const task = TaskTester(CounterTask, { id: 123 });
-//
-// for (let i = 0; i < 10; i++) {
-//   // These methods would throw an error if the task's yielded calls don't match.
-//   task.calls(delay, 1000).calls(incrementCounter, 123);
-// }
-//
-
-// To test whether or not the correct tasks are being run for the given state,
-// you could just use shallow rendering to make sure the correct Task
-// components are being rendered:
-import ReactTestUtils from 'react-addons-test-utils';
-
-const renderer = ReactTestUtils.createRenderer();
-renderer.render(<TaskManager state={{ counters: [{ count: 123 }] }} />);
-const tasks = renderer.getRenderOutput().props.children;
-
-assert(deepEqual(tasks, [<CounterTask key={0} id={0} />]));
-
-// Server rendering should also work without causing side effects:
-import ReactDOMServer from 'react-dom/server';
-
-function ServerTest(props) {
-  const fail = function *(props) {
-    throw 'fail';
+      {/*
+        * NOTE: You could just render your tasks alongside regular components like this:
+        *
+        * <AppTasks state={state} />
+        *
+        * But it's probably a bad idea, because then you won't be able to render
+        * on the client without causing side effects.
+        *
+        * Instead it's probably better render all of your tasks separately from your UI, like in render() above.
+        *
+        */}
+    </div>;
   };
 
-  return <Task generator={fail} />;
+  const AppTasks = ({ state }) => {
+    const counterTasks = state.counters.map((counter, index) => <CounterTask key={index} id={index} />);
+
+    return <div>{counterTasks}</div>;
+  };
+
+  const CounterTask = class CounterTask extends Task {
+    *run() {
+      const { id } = this.props;
+
+      // It's okay to have an infinite loop inside a task as long as it yields
+      // inside the loop. The Proc running the task will be stopped when the Task
+      // component gets unmounted.
+      while (true) {
+        yield Proc.call(delay, 1000);
+        yield Proc.call(incrementCounter, id);
+      }
+    }
+
+    taskWasStopped() {
+      console.log('taskWasStopped');
+    }
+  };
+
+  //
+  // If you don't need to use the taskWasStopped() method, you can just use a
+  // generator function that takes the props as an argument, similar to React's
+  // stateless components:
+  //
+  // function *CounterGenerator({ id }) {
+  //   while (true) {
+  //     yield Proc.call(delay, 1000);
+  //     yield Proc.call(incrementCounter, id);
+  //   }
+  // }
+  //
+  // Then you can run this generator using the generic Task component:
+  //
+  // <Task generator={CounterGenerator} id={id} />
+  //
+
+  const addCounter = () => {
+    state.counters.push({ count: 0 });
+
+    render();
+  };
+
+  const incrementCounter = (id) => {
+    state.counters[id].count += 1;
+
+    render();
+  };
+
+  const removeCounter = (id) => {
+    // NOTE: Because we just delete the counter at the given index, the length of
+    // the array doesn't decrease so new counters always get a unique id and we
+    // don't have to worry about new counters using the same id as an old,
+    // removed counter.
+    //
+    // So in this case it works to just use an array, but in a real app you
+    // should really give your tasks proper keys instead of just using an array
+    // index.
+    delete state.counters[id];
+
+    render();
+  };
+
+  // Testing Tasks:
+  function testTaskExample() {
+    // To test a single Task, you can iterate through its generator and compare
+    // against the call objects it yields, just like Redux Sagas, but simpler
+    // because Proc only supports call/apply effects.
+
+    const task = new CounterTask({ id: 123 });
+    const gen = task.run();
+
+    for (let i = 0; i < 10; i++) {
+      assert(deepEqual(gen.next().value, Proc.call(delay, 1000)));
+      assert(deepEqual(gen.next(undefined).value, Proc.call(incrementCounter, 123)));
+    }
+
+    //
+    // It should also be possible to make some kind of helpers for testing
+    // tasks/procs, similar to https://github.com/jfairbank/redux-saga-test-plan:
+    //
+    // const task = TaskTester(CounterTask, { id: 123 });
+    //
+    // for (let i = 0; i < 10; i++) {
+    //   // These methods would throw an error if the task's yielded calls don't match.
+    //   task.calls(delay, 1000).calls(incrementCounter, 123);
+    // }
+    //
+
+    // To test whether or not the correct tasks are being run for the given
+    // state, you can just use shallow rendering to make sure the correct Task
+    // components are being rendered:
+    const renderer = ReactTestUtils.createRenderer();
+    renderer.render(<AppTasks state={{ counters: [{ count: 123 }] }} />);
+    const tasks = renderer.getRenderOutput().props.children;
+
+    //assert(deepEqual(tasks, [<CounterTask key={0} id={0} />]));
+  }
+
+  render();
+  testTaskExample();
 }
 
-// This shouldn't throw an error:
-assert(ReactDOMServer.renderToStaticMarkup(<ServerTest />) === '');
+// Server rendering:
+function serverRenderTest() {
+  // Server rendering of tasks should work without causing side effects because
+  // only componentWillMount gets called during server rendering.
+  const ServerTaskTest = (props) => {
+    const fail = function *(props) {
+      throw 'fail';
+    };
 
-// This should throw an error:
-try {
-  console.log(ReactDOM.render(<ServerTest />, document.createElement('div')));
-} catch (error) {
-  assert(error === 'fail');
+    return <Task generator={fail} />;
+  };
+
+  // This shouldn't throw an error:
+  assert(ReactDOMServer.renderToStaticMarkup(<ServerTaskTest />) === '');
+
+  // This should throw an error:
+  try {
+    console.log(ReactDOM.render(<ServerTaskTest />, document.createElement('div')));
+    assert(false);
+  } catch (error) {
+    assert(error === 'fail');
+  }
 }
+
+procExample();
+taskExample();
+serverRenderTest();
