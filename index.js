@@ -1,6 +1,7 @@
 import 'babel-polyfill';
 import React from 'react';
 import deepEqual from 'deep-equal';
+import clone from 'clone';
 
 /**
  * <Task generator={...} ... />
@@ -22,6 +23,9 @@ import deepEqual from 'deep-equal';
  * which will force React to unmount the Task when the key changes.
  */
 export default class Task extends React.Component {
+  // React lifecycle methods
+  // -----------------------
+
   // Start a Proc (which is basically a background process that runs a
   // generator function) when the Task component gets mounted, and stop the
   // proc when it gets unmounted.
@@ -30,26 +34,22 @@ export default class Task extends React.Component {
     // instead of always having to make a new class that extends Task.
     const generatorFn = this.props.generator || this.run.bind(this);
 
-    this.proc = new Proc(generatorFn, this.props);
-    this.proc.start();
+    this._start(generatorFn, this.props);
   }
 
   componentWillReceiveProps(nextProps) {
     if (this.props.generator !== nextProps.generator) {
       // If the generator has changed, stop the old Proc and start a new one.
-      this.proc.stop();
-      this.proc = new Proc(nextProps.generator, this.props);
-      this.proc.start();
+      this._stop();
+      this._start(nextProps.generator, nextProps);
     } else if (process.env.NODE_ENV !== 'production') {
       // If the generator hasn't changed but the other props have, consider
       // that an error, because it's not clear whether the Proc should be
       // restarted or not.
       //
       // Don't run this check on production because it requires a deepEqual
-      // which could become slow, and because it's probably better to just let
-      // the app continue running and hope it still works despite the ambiguity
-      // than to always throw an error.
-      if (!deepEqual(this.props, nextProps)) {
+      // which could become very slow for large data structures.
+      if (!deepEqual(this._propsSnapshot, nextProps)) {
         throw new Error('Task received new props with the same generator. ' +
             'To restart the Task with the new props, pass a new "key" prop. To ' +
             'pass new information to the Task during its execution without ' +
@@ -60,9 +60,7 @@ export default class Task extends React.Component {
   }
 
   componentWillUnmount() {
-    this.proc.stop();
-
-    this.taskWasStopped();
+    this._stop();
   }
 
   // Task components never render anything by default.
@@ -74,8 +72,8 @@ export default class Task extends React.Component {
     return null;
   }
 
-  // Methods that should be overriden by child classes:
-  // --------------------------------------------------
+  // Methods for child classes to override
+  // -------------------------------------
 
   // Generator method that performs side effects by yielding calls to Proc.call/apply.
   *run() {
@@ -85,6 +83,26 @@ export default class Task extends React.Component {
 
   // Called when the Task is stopped/unmounted.
   taskWasStopped() { }
+
+  // "Private" methods
+  // -----------------
+
+  _start(generator, props) {
+    // Make a snapshot of the props so that we can check if the props were mutated.
+    if (process.env.NODE_ENV !== 'production') {
+      this._propsSnapshot = clone(props);
+    }
+
+    this.proc = new Proc(generator, props);
+    this.proc.start();
+  }
+
+  _stop() {
+    this.proc.stop();
+
+    this.taskWasStopped();
+  }
+
 }
 
 Task.propTypes = {
