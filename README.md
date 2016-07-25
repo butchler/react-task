@@ -9,7 +9,7 @@ effects based on your state/store, and let the Task components
 start/stop Procs (which are very simplified versions of sagas) based on
 which Tasks got rendered.
 
-## State-based side effects
+## State-based Side Effects
 
 This means that side effects are not started/stopped when actions get
 dispatched, like in redux-thunk and redux-saga, but when the state changes.
@@ -21,6 +21,34 @@ state to set an `isLoading` flag so that the UI can show a loading icon.
 
 With this approach, you would just render a Task component for each resource
 where `isLoading === true`.
+
+## Simple Example
+
+This example should log the text you input to the console once every
+second, and the old process will automatically be stopped when you
+change the text (because the key prop for the Task component changed).
+
+```
+function render(text) {
+  ReactDOM.render(
+    <div>
+      <input id="text" type="text" placeholder="Enter some text to console.log" />
+      <button onClick={() => render(document.getElementById('text').value)}>Update Text</button>
+      <Task key={text} generator={logger} text={text} />
+    </div>,
+    document.getElementById('app-container')
+  );
+}
+
+function *logger({ text }) {
+  if (!text) return;
+
+  while (true) {
+    yield Proc.call(delay, 1000);
+    yield Proc.call(() => console.log(text));
+  }
+}
+```
 
 ## Advantages
 
