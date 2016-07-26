@@ -1,7 +1,7 @@
 {
   "name": "react-task",
   "version": "1.0.0",
-  "description": "Experiment side-effect model for React",
+  "description": "Experimental side-effect model for React",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
