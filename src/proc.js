@@ -25,6 +25,10 @@ export default class Proc {
   }
 
   _continueExecution(returnedValue, isError) {
+    if (!this.generator) {
+      return;
+    }
+
     // Send the previous call's return value to the generator and get the next
     // value that the generator yields, which should be a call object.
     const generatorResult = isError ?
@@ -78,18 +82,19 @@ export default class Proc {
       return;
     }
 
-    // The will cause all future calls to this.generator.next() to return {
-    // value: undefined, done: true }, which will let _continueExecution know
-    // that it should stop.
+    // This will cause the generator to be done, and will trigger the `finally` block inside the
+    // generator if it has one.
     this.generator.return();
-    this.generator = null;
 
     // If the most recent promise has a cancel method, call it when the proc
     // gets stopped.
     if (this.lastPromise && typeof this.lastPromise[Proc.CANCEL_PROMISE] === 'function') {
       this.lastPromise[Proc.CANCEL_PROMISE]();
-      this.lastPromise = null;
     }
+
+    // Erase references to prevent memory leaks.
+    this.generator = null;
+    this.lastPromise = null;
   }
 }
 
