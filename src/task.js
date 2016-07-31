@@ -1,6 +1,5 @@
 import React from 'react';
-import deepEqual from 'deep-equal';
-import clone from 'clone';
+import EventEmitter from 'events';
 
 import Proc from './proc';
 
@@ -22,6 +21,10 @@ import Proc from './proc';
  * NOTE: A Task will only stop its Proc when it gets unmounted or the generator
  * prop is changed. To restart a Task with new props, pass a unique "key" prop,
  * which will force React to unmount the Task when the key changes.
+ *
+ * Alternatively, you can use the this.getProps() method (which is also passed
+ * as the second argument to he generator function) to get the current state of
+ * the Task's props in the middle of the Task's execution.
  */
 export default class Task extends React.Component {
   // React lifecycle methods
@@ -35,6 +38,26 @@ export default class Task extends React.Component {
     // instead of always having to make a new class that extends Task.
     const generatorFn = this.props.generator || this.run.bind(this);
 
+    this._events = new EventEmitter();
+
+    // Returns a promise that resolves when the props match the given filter.
+    this.getProps = filterFn => {
+      return new Promise((resolve, reject) => {
+        const handlePropsChanged = (nextProps) => {
+          if (filterFn === undefined || filterFn(nextProps)) {
+            resolve(nextProps);
+            this._events.removeListener('propsChanged', handlePropsChanged);
+          }
+        };
+
+        // Check and resolve immediately if the props already match the filter.
+        handlePropsChanged(this.props);
+
+        // Check if the props match the filter whenever they change.
+        this._events.on('propsChanged', handlePropsChanged);
+      });
+    };
+
     this._start(generatorFn, this.props);
   }
 
@@ -43,20 +66,8 @@ export default class Task extends React.Component {
       // If the generator has changed, stop the old Proc and start a new one.
       this._stop();
       this._start(nextProps.generator, nextProps);
-    } else if (process.env.NODE_ENV !== 'production') {
-      // If the generator hasn't changed but the other props have, consider
-      // that an error, because it's not clear whether the Proc should be
-      // restarted or not.
-      //
-      // Don't run this check on production because it requires a deepEqual
-      // which could become very slow for large data structures.
-      if (!deepEqual(this._propsSnapshot, nextProps)) {
-        throw new Error('Task received new props with the same generator. ' +
-            'To restart the Task with the new props, pass a new "key" prop. To ' +
-            'pass new information to the Task during its execution without ' +
-            'restarting it, yield a call to a function that returns that ' +
-            'information within its generator.');
-      }
+    } else {
+      this._events.emit('propsChanged', nextProps);
     }
   }
 
@@ -89,12 +100,7 @@ export default class Task extends React.Component {
   // -----------------
 
   _start(generator, props) {
-    // Make a snapshot of the props so that we can check if the props were mutated.
-    if (process.env.NODE_ENV !== 'production') {
-      this._propsSnapshot = clone(props);
-    }
-
-    this.proc = new Proc(generator, props);
+    this.proc = new Proc(generator, props, this.getProps);
     this.proc.start();
   }
 

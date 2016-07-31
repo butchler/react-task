@@ -10,7 +10,6 @@
   "author": "Adam Buechler",
   "license": "ISC",
   "dependencies": {
-    "clone": "^1.0.2",
     "deep-equal": "^1.0.1",
     "react": "^15.2.1",
     "react-dom": "^15.2.1"
