@@ -103,26 +103,26 @@ function taskExample() {
 
   const CounterTask = class CounterTask extends Task {
     *run() {
-      const { id } = this.props;
+      try {
+        const { id } = this.props;
 
-      // It's okay to have an infinite loop inside a task as long as it yields
-      // inside the loop. The Proc running the task will be stopped when the Task
-      // component gets unmounted.
-      while (true) {
-        yield Proc.call(delay, 1000);
-        yield Proc.call(incrementCounter, id);
+        // It's okay to have an infinite loop inside a task as long as it yields
+        // inside the loop. The Proc running the task will be stopped when the Task
+        // component gets unmounted.
+        while (true) {
+          yield Proc.call(delay, 1000);
+          yield Proc.call(incrementCounter, id);
+        }
+      } finally {
+        // Use a finally block to perform clean up when a Task gets stopped.
+        console.log('Task was unmounted and stopped.');
       }
-    }
-
-    taskWasStopped() {
-      console.log('taskWasStopped');
     }
   };
 
   //
-  // If you don't need to use the taskWasStopped() method, you can just use a
-  // generator function that takes the props as an argument, similar to React's
-  // stateless components:
+  // Instead of making a subclass of Task, you can just pass a generator function directly to the
+  // generic Task component:
   //
   // function *CounterGenerator({ id }) {
   //   while (true) {
@@ -131,7 +131,7 @@ function taskExample() {
   //   }
   // }
   //
-  // Then you can run this generator using the generic Task component:
+  // ...
   //
   // <Task generator={CounterGenerator} id={id} />
   //

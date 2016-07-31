@@ -11,8 +11,7 @@ import Proc from './proc';
  * gets unmounted.
  *
  * To define a Task, create a new class that extends Task and overrides the
- * *run() generator method. You may also override the taskWasStopped() method
- * if you want to do cleanup when the Task gets unmounted.
+ * *run() generator method.
  *
  * Alternatively, you can just pass a generator function to the "generator"
  * prop, and all other props will be passed as the first argument to the
@@ -93,9 +92,6 @@ export default class Task extends React.Component {
         'generator={...} prop must be passed to the Task component.');
   }
 
-  // Called when the Task is stopped/unmounted.
-  taskWasStopped() { }
-
   // "Private" methods
   // -----------------
 
@@ -106,10 +102,7 @@ export default class Task extends React.Component {
 
   _stop() {
     this.proc.stop();
-
-    this.taskWasStopped();
   }
-
 }
 
 Task.propTypes = {
