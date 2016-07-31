@@ -1,2 +1,7 @@
 /node_modules/
 *.swp
+/index.js
+/proc.js
+/task.js
+/test.js
+/promises.js

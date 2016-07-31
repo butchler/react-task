@@ -1,8 +1,9 @@
 import 'babel-polyfill';
 
-import Task from './src/task';
-import { call, callSync, runProc } from './src/proc';
-import TaskTester from './src/test';
+import { Task, call, callSync } from '../src';
+import { runProc } from '../src/proc';
+import TaskTester from '../src/test';
+import { delay } from '../src/promises';
 
 // Examples
 // --------
@@ -16,20 +17,6 @@ function assert(value) {
   if (!value) {
     throw new Error('Assertion failed');
   }
-}
-
-function delay(timeout) {
-  let timeoutId;
-
-  const promise = new Promise((resolve, reject) => {
-    timeoutId = setTimeout(resolve, timeout);
-  });
-
-  promise.cancel = () => {
-    clearTimeout(timeoutId);
-  };
-
-  return promise;
 }
 
 // Proc:

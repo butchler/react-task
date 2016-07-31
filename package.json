@@ -1,20 +1,22 @@
 {
   "name": "react-task",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "description": "Experimental side-effect model for React",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "dev-server": "webpack-dev-server --inline"
+    "dev-server": "webpack-dev-server -d --config examples/webpack.config.js --inline --content-base examples",
+    "build": "babel src --out-dir ."
   },
   "author": "Adam Buechler",
   "license": "ISC",
   "dependencies": {
-    "deep-equal": "^1.0.1",
     "react": "^15.2.1",
-    "react-dom": "^15.2.1"
+    "deep-equal": "^1.0.1"
   },
   "devDependencies": {
+    "react-dom": "^15.2.1",
+    "babel-cli": "^6.11.4",
     "babel-core": "^6.11.4",
     "babel-loader": "^6.2.4",
     "babel-polyfill": "^6.9.1",
