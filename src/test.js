@@ -1,18 +1,22 @@
-import deepEqual from 'deep-equal';
-
 import Task from './task';
-import Proc from './proc';
+import { apply, applySync, isPromise } from './proc';
+// TODO: Allow using the deepEqual function from the testing framework.
+import deepEqual from 'deep-equal';
 
 export default class TaskTester {
   constructor(element) {
-    // TODO: Find out why this doesn't work without .prototype
-    if (!(element.type.prototype instanceof Task)) {
-      throw new Error('Element given to TaskTester was not an instance of Task.');
-    }
+    // TODO: Throw an error if element isn't a subclass of Task.
+    const task = new element.type();
 
-    this.generator = element.props.generator ?
-      element.props.generator(element.props) :
-      (new element.type(element.props)).run();
+    // Set the props so they can be referenced by the run() method.
+    task.props = element.props;
+
+    // Save a reference to the getProps function so that tests can reference
+    // calls to it.
+    this.getProps = task.getProps.bind(task);
+
+    const generatorFn = task.getGeneratorFunction(element.props);
+    this.generator = generatorFn(element.props, this.getProps);
   }
 
   /**
@@ -28,27 +32,28 @@ export default class TaskTester {
    * match the given context, function, and arguments.
    */
   applies(context, fn, args) {
-    const result = this._next();
-    const expectedResult = { done: false, value: Proc.apply(context, fn, args) };
+    const result = this._step();
 
-    if (!deepEqual(result, expectedResult)) {
+    // For testing we don't care if the call was synchronous or not, because we
+    // can fake the return value anyway.
+    const expectedCall = { done: false, value: apply(context, fn, args) };
+    const expectedCallSync = { done: false, value: applySync(context, fn, args) };
+
+    if (!(deepEqual(result, expectedCall) || deepEqual(result, expectedCallSync))) {
       throw new Error('Task did not yield expected value.');
     }
 
     return this;
   }
 
-  _next() {
-    if (this.nextReturnValue) {
-      const { value, isError } = this.nextReturnValue;
-      this.nextReturnValue = null;
+  yieldsPromise() {
+    const result = this._step();
 
-      return isError ?
-        this.generator.throw(value) :
-        this.generator.next(value);
-    } else {
-      return this.generator.next();
+    if (!isPromise(result.value)) {
+      throw new Error('Task yielded something other than a promise.');
     }
+
+    return this;
   }
 
   /**
@@ -72,16 +77,42 @@ export default class TaskTester {
   }
 
   /**
+   * Skips over the next value returned by the generator without performing any
+   * checks.
+   */
+  skip() {
+    this._step();
+
+    return this;
+  }
+
+  /**
    * Throws an error if the generator yields another value instead of returning
    * or ending.
    */
   ends() {
-    const result = this.generator.next();
+    const result = this._step();
 
     if (result.done !== true) {
       throw new Error('Task did not end.');
     }
 
     return this;
+  }
+
+  /**
+   * Returns the next value returned by the generator.
+   */
+  _step() {
+    if (this.nextReturnValue) {
+      const { value, isError } = this.nextReturnValue;
+      this.nextReturnValue = null;
+
+      return isError ?
+        this.generator.throw(value) :
+        this.generator.next(value);
+    } else {
+      return this.generator.next();
+    }
   }
 }

@@ -1,7 +1,7 @@
 import React from 'react';
 import EventEmitter from 'events';
 
-import Proc from './proc';
+import { runProc } from './proc';
 
 /**
  * <Task generator={...} ... />
@@ -26,6 +26,45 @@ import Proc from './proc';
  * the Task's props in the middle of the Task's execution.
  */
 export default class Task extends React.Component {
+  constructor() {
+    super();
+
+    // Private variables.
+    this._events = new EventEmitter();
+    this._getProps = this.getProps.bind(this);
+  }
+
+  getGeneratorFunction(props) {
+    return props.generator || this.run.bind(this);
+  }
+
+  // Returns a promise that resolves with the props when they match the given
+  // filter, or resolves with the current props immediately if no filter
+  // function is provided.
+  getProps(filterFn = (() => true)) {
+    return new Promise((resolve, reject) => {
+      // Check and resolve immediately if the props already match the filter.
+      if (filterFn(this.props)) {
+        resolve(nextProps);
+        return;
+      }
+
+      const handlePropsChanged = (nextProps) => {
+        if (filterFn(nextProps)) {
+          resolve(nextProps);
+          this._events.removeListener('propsChanged', handlePropsChanged);
+        }
+      };
+
+      // Check if the props match the filter whenever they change.
+      this._events.on('propsChanged', handlePropsChanged);
+    });
+  }
+
+  propsChanged(nextProps) {
+    this._events.emit('propsChanged', nextProps);
+  }
+
   // React lifecycle methods
   // -----------------------
 
@@ -33,40 +72,16 @@ export default class Task extends React.Component {
   // generator function) when the Task component gets mounted, and stop the
   // proc when it gets unmounted.
   componentDidMount() {
-    // Allow just passing in a generator function to a generic Task component
-    // instead of always having to make a new class that extends Task.
-    const generatorFn = this.props.generator || this.run.bind(this);
-
-    this._events = new EventEmitter();
-
-    // Returns a promise that resolves when the props match the given filter.
-    this.getProps = filterFn => {
-      return new Promise((resolve, reject) => {
-        const handlePropsChanged = (nextProps) => {
-          if (filterFn === undefined || filterFn(nextProps)) {
-            resolve(nextProps);
-            this._events.removeListener('propsChanged', handlePropsChanged);
-          }
-        };
-
-        // Check and resolve immediately if the props already match the filter.
-        handlePropsChanged(this.props);
-
-        // Check if the props match the filter whenever they change.
-        this._events.on('propsChanged', handlePropsChanged);
-      });
-    };
-
-    this._start(generatorFn, this.props);
+    this._start(this.props);
   }
 
   componentWillReceiveProps(nextProps) {
     if (this.props.generator !== nextProps.generator) {
       // If the generator has changed, stop the old Proc and start a new one.
       this._stop();
-      this._start(nextProps.generator, nextProps);
+      this._start(nextProps);
     } else {
-      this._events.emit('propsChanged', nextProps);
+      this.propsChanged(nextProps);
     }
   }
 
@@ -86,8 +101,8 @@ export default class Task extends React.Component {
   // Methods for child classes to override
   // -------------------------------------
 
-  // Generator method that performs side effects by yielding calls to Proc.call/apply.
-  *run() {
+  // Generator method that performs side effects by yielding calls to proc.call/apply.
+  run() {
     throw new Error('Subclasses of Task must override the run() method, or a ' +
         'generator={...} prop must be passed to the Task component.');
   }
@@ -95,20 +110,22 @@ export default class Task extends React.Component {
   // "Private" methods
   // -----------------
 
-  _start(generator, props) {
-    this.proc = new Proc(generator, props, this.getProps);
-    this.proc.start();
+  _start(props) {
+    const promise = runProc(this.getGeneratorFunction(props), props, this._getProps);
+    this._stopProc = promise.cancel;
   }
 
   _stop() {
-    this.proc.stop();
+    if (this._stopProc) {
+      this._stopProc();
+    }
   }
 }
 
 Task.propTypes = {
   generator: React.PropTypes.func,
   children: (props, propName, componentName) => {
-    if (props[propName]) {
+    if (props.children) {
       return new Error('Task components should not have any children. To organize ' +
           'tasks in a hierarchy, use normal elements like <div>, <span>, etc.');
     }

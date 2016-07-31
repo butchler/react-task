@@ -1,118 +1,135 @@
-export default class Proc {
-  constructor(generatorFn, ...args) {
-    this.generatorFn = generatorFn;
-    this.args = args;
-  }
+const INITIAL_STEP_RESULT = { value: undefined, done: false, isError: false };
 
-  start() {
-    // Don't do anything if already started.
-    if (this.generator) {
-      return;
-    }
+export function runProc(generatorFn, ...args) {
+  const generator = generatorFn(...args);
+  let cancelCurrentStep;
 
-    this.generator = this.generatorFn(...this.args);
+  const promise = new Promise((resolve, reject) => {
+    const loopStep = stepResult => {
+      // Call stepProc with the previous step's result until the generator is done.
+      if (stepResult.done) {
+        resolve(stepResult.value);
+      } else {
+        const stepPromise = stepProc(generator, stepResult);
+        cancelCurrentStep = stepPromise.cancel;
+        stepPromise.then(loopStep);
+      }
+    };
 
-    // Make sure that the function is actually a generator function, or at
-    // least something that pretends to be one.
-    if (!(this.generator &&
-          typeof this.generator.next === 'function' &&
-          typeof this.generator.throw === 'function' &&
-          typeof this.generator.return === 'function')) {
-      throw new Error(`Function supplied to Proc did not return a generator: ${this.generator}`);
-    }
+    loopStep(INITIAL_STEP_RESULT);
+  });
 
-    this._continueExecution(undefined, false);
-  }
+  // Allow the proc to be cancelled. This can be used directly, but it can also be used with Promise
+  // libraries like Bluebird to make it work properly with things like Promise.all.
+  promise.cancel = () => {
+    return cancelCurrentStep();
+  };
 
-  _continueExecution(returnedValue, isError) {
-    if (!this.generator) {
-      return;
-    }
-
-    // Send the previous call's return value to the generator and get the next
-    // value that the generator yields, which should be a call object.
-    const generatorResult = isError ?
-      this.generator.throw(returnedValue) :
-      this.generator.next(returnedValue);
-
-    // Stop execution if the generator has finished.
-    if (generatorResult.done) {
-      this.generator = null;
-      return;
-    }
-
-    // Stop and throw an error if the value returned by the generator was not a
-    // valid call object.
-    if (!Proc.isCall(generatorResult.value)) {
-      this.stop();
-      throw new Error(`Value yielded by generator was not a valid Proc.call object: ${generatorResult.value}`);
-    }
-
-    // Actually call the function and make the generator handle any errors.
-    let callResult;
-
-    try {
-      callResult = Proc.doCall(generatorResult.value);
-    } catch (error) {
-      this._continueExecution(error, true);
-      return;
-    }
-
-    // Wrapping the return value in Promise.resolve will allow us to treat it
-    // like a promise even if it is just a normal value, while still allowing
-    // promises to work normally.
-    const promise = Promise.resolve(callResult);
-    promise.then(result => {
-      this._continueExecution(result, false);
-    }).catch(error => {
-      this._continueExecution(error, true);
-    });
-
-    // Save the returned promise's cancel method if it has one.
-    if (callResult && typeof callResult[Proc.CANCEL_PROMISE] === 'function') {
-      promise[Proc.CANCEL_PROMISE] = callResult[Proc.CANCEL_PROMISE];
-    }
-
-    this.lastPromise = promise;
-  }
-
-  stop() {
-    // Don't do anything if already stopped.
-    if (!this.generator) {
-      return;
-    }
-
-    // This will cause the generator to be done, and will trigger the `finally` block inside the
-    // generator if it has one.
-    this.generator.return();
-
-    // If the most recent promise has a cancel method, call it when the proc
-    // gets stopped.
-    if (this.lastPromise && typeof this.lastPromise[Proc.CANCEL_PROMISE] === 'function') {
-      this.lastPromise[Proc.CANCEL_PROMISE]();
-    }
-
-    // Erase references to prevent memory leaks.
-    this.generator = null;
-    this.lastPromise = null;
-  }
+  return promise;
 }
 
-// Helper functions to create and execute call objects.
-Proc.CALL   = 'Proc/call';
-Proc.call   = (fn, ...args) => Proc.apply(undefined, fn, args);
-Proc.apply  = (context, fn, args) => ({ [Proc.CALL]: { context, fn, args } });
-Proc.doCall = call => {
-  const { context, fn, args } = call[Proc.CALL];
+export function stepProc(generator, previousResult = INITIAL_STEP_RESULT) {
+  let waitingPromise = null;
 
-  return fn.apply(context, args);
-};
-Proc.isCall = call => {
-  if (!(call && call[Proc.CALL])) {
-    return false;
-  }
+  const waitOnPromise = (promise, resolve) => {
+    waitingPromise = promise;
 
-  const { context, fn, args } = call[Proc.CALL];
+    promise.then(
+      promiseResult => {
+        resolve({ value: promiseResult, done: false, isError: false });
+        waitingPromise = null;
+      },
+      error => {
+        resolve({ value: error, done: false, isError: true });
+        waitingPromise = null;
+      });
+  };
 
-  return typeof fn === 'function' && Array.isArray(args);
-};
+  const promise = new Promise((resolve, reject) => {
+    const generatorResult = previousResult.isError ?
+      generator.throw(previousResult.value) :
+      generator.next(previousResult.value);
+
+    if (generatorResult.done) {
+      // If the generator is done, finish the step with the final result.
+      resolve({ value: generatorResult.value, done: true, isError: false });
+    } else if (isPromise(generatorResult.value)) {
+      // If the generator yielded a promise, finish the step when the promise resolves.
+      waitOnPromise(generatorResult.value, resolve);
+    } else if (isCall(generatorResult.value)) {
+      // If the generator yielded a call object, call the function contained in
+      // the call object and resolve the result.
+      const call = generatorResult.value;
+      let callResult;
+
+      try {
+        callResult = executeCall(call);
+      } catch (error) {
+        // If there was an error while executing the call, send the error to the
+        // next step so the generator can handle it.
+        resolve({ value: error, done: false, isError: true });
+        return;
+      }
+
+      if (isPromise(callResult) && !call.isSync) {
+        // If the call returned a promise and it wasn't a synchronous call,
+        // finish the step when the promise resolves.
+        waitOnPromise(callResult, resolve);
+      } else {
+        // Otherwise, just finish the step immediately with the result of the call.
+        resolve({ value: callResult, done: false, isError: false });
+      }
+    } else {
+      // Throw an error if the generator yields anything else.
+      reject(new Error('Procs should only yield promises or call objects ' +
+        '(returned by call/callSync/apply/applySync).'));
+    }
+  });
+
+  promise.cancel = () => {
+    // If we're currently waiting on a promise that is cancellable, cancel it.
+    if (waitingPromise && typeof waitingPromise.cancel === 'function') {
+      waitingPromise.cancel();
+    }
+
+    return generator.return();
+  };
+
+  return promise;
+}
+
+const CALL = '@@react-task/proc.call';
+
+// Helper functions for creating/working with call objects.
+function createCall(context, fn, args, isSync) {
+  return { [CALL]: { context, fn, args, isSync } };
+}
+
+export function call(fn, ...args) {
+  return createCall(undefined, fn, args, false);
+}
+export function callSync(fn, ...args) {
+  return createCall(undefined, fn, args, true);
+}
+export function apply(context, fn, args) {
+  return createCall(context, fn, args, false);
+}
+export function applySync(context, fn, args) {
+  return createCall(context, fn, args, true);
+}
+
+export function isCall(object) {
+  return object && object[CALL] && typeof object[CALL].fn === 'function';
+}
+
+export function executeCall(object) {
+  const call = object[CALL];
+
+  return Function.prototype.apply.call(call.fn, call.context, call.args);
+}
+
+// Checks if an object is a Promise, using the loosest definition of promise
+// possible so that the library will work with non-standard Promises.
+export function isPromise(object) {
+  return object && typeof object.then === 'function';
+}

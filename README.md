@@ -44,8 +44,8 @@ function *logger({ text }) {
   if (!text) return;
 
   while (true) {
-    yield Proc.call(delay, 1000);
-    yield Proc.call(() => console.log(text));
+    yield proc.call(delay, 1000);
+    yield proc.call(() => console.log(text));
   }
 }
 ```

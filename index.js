@@ -1,7 +1,7 @@
 import 'babel-polyfill';
 
 import Task from './src/task';
-import Proc from './src/proc';
+import { call, callSync, runProc } from './src/proc';
 import TaskTester from './src/test';
 
 // Examples
@@ -25,7 +25,7 @@ function delay(timeout) {
     timeoutId = setTimeout(resolve, timeout);
   });
 
-  promise[Proc.CANCEL_PROMISE] = () => {
+  promise.cancel = () => {
     clearTimeout(timeoutId);
   };
 
@@ -34,25 +34,28 @@ function delay(timeout) {
 
 // Proc:
 function procExample() {
-  const counter = function *(name, timeout) {
+  const counter = function *(timeout) {
     let count = 0;
 
-    while (count < 5) {
-      yield Proc.call(delay, timeout);
-      count += 1;
-      console.log(`${name}: ${count}`);
+    try {
+      while (count < 5) {
+        yield call(delay, timeout);
+        count += 1;
+        console.log(`Count: ${count}`);
+      }
+    } finally {
+      if (count < 5) {
+        console.log('Counter was cancelled before it ended.');
+      }
     }
-
-    console.log(`${name} ended`);
   };
 
-  const proc1 = new Proc(counter, 'normal', 1000);
-  proc1.start();
+  runProc(counter, 500).then(() => {
+    console.log('First counter ended.');
 
-  const proc2 = new Proc(counter, 'stopped prematurely', 1000);
-  proc2.stop();
-  proc2.start();
-  delay(1000).then(() => proc2.stop());
+    const proc = runProc(counter, 500);
+    delay(1000).then(proc.cancel);
+  });
 }
 
 // Task:
@@ -110,8 +113,8 @@ function taskExample() {
         // inside the loop. The Proc running the task will be stopped when the Task
         // component gets unmounted.
         while (true) {
-          yield Proc.call(delay, 1000);
-          yield Proc.call(incrementCounter, id);
+          yield call(delay, 1000);
+          yield call(incrementCounter, id);
         }
       } finally {
         // Use a finally block to perform clean up when a Task gets stopped.
@@ -126,8 +129,8 @@ function taskExample() {
   //
   // function *CounterGenerator({ id }) {
   //   while (true) {
-  //     yield Proc.call(delay, 1000);
-  //     yield Proc.call(incrementCounter, id);
+  //     yield call(delay, 1000);
+  //     yield call(incrementCounter, id);
   //   }
   // }
   //
@@ -167,12 +170,13 @@ function taskExample() {
     // To test a single Task, you can iterate through its generator and compare
     // against the call objects it yields, just like Redux Sagas, but simpler
     // because Proc only supports call/apply effects:
-    const task = new CounterTask({ id: 123 });
+    const task = new CounterTask();
+    task.props = { id: 123 };
     const gen = task.run();
 
     for (let i = 0; i < 10; i++) {
-      assert(deepEqual(gen.next().value, Proc.call(delay, 1000)));
-      assert(deepEqual(gen.next(undefined).value, Proc.call(incrementCounter, 123)));
+      assert(deepEqual(gen.next().value, call(delay, 1000)));
+      assert(deepEqual(gen.next(undefined).value, call(incrementCounter, 123)));
     }
 
     // The same test using a helper for testing tasks:
@@ -194,6 +198,37 @@ function taskExample() {
 
   render();
   testTaskExample();
+
+  function *CounterTaskSync({ id }) {
+    // It's okay to have an infinite loop inside a task as long as it yields
+    // inside the loop. The Proc running the task will be stopped when the Task
+    // component gets unmounted.
+    while (true) {
+      const promise = yield callSync(delay, 1000);
+      yield promise;
+      yield call(incrementCounter, id);
+    }
+  }
+
+  function testSync() {
+    const task = new TaskTester(<Task generator={CounterTaskSync} id={123} />);
+
+    for (let i = 0; i < 1; i++) {
+      task
+        .calls(delay, 1000).returns(Promise.resolve(true))
+        .yieldsPromise()
+        .calls(incrementCounter, 123);
+    }
+
+    for (let i = 0; i < 1; i++) {
+      task
+        .calls(delay, 1000)
+        .skip()
+        .calls(incrementCounter, 123);
+    }
+  }
+
+  testSync();
 }
 
 // Server rendering:
@@ -202,7 +237,7 @@ function serverRenderTest() {
   // only componentWillMount gets called during server rendering.
   const ServerTaskTest = (props) => {
     const fail = function *(props) {
-      throw 'fail';
+      throw new Error('fail');
     };
 
     return <Task generator={fail} />;
@@ -211,13 +246,17 @@ function serverRenderTest() {
   // This shouldn't throw an error:
   assert(ReactDOMServer.renderToStaticMarkup(<ServerTaskTest />) === '');
 
+  let hadError = false;
+  window.addEventListener("unhandledrejection", event => {
+    // Prevent printing of error in console.
+    event.preventDefault();
+    hadError = true;
+  });
+
   // This should throw an error:
-  try {
-    console.log(ReactDOM.render(<ServerTaskTest />, document.createElement('div')));
-    assert(false);
-  } catch (error) {
-    assert(error === 'fail');
-  }
+  ReactDOM.render(<ServerTaskTest />, document.createElement('div'));
+
+  setTimeout(() => assert(hadError), 0);
 }
 
 procExample();
