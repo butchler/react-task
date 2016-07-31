@@ -9,6 +9,10 @@
     "build": "babel src --out-dir ."
   },
   "author": "Adam Buechler",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/butchler/react-task.git"
+  },
   "license": "ISC",
   "dependencies": {
     "react": "^15.2.1",
