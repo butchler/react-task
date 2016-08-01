@@ -19,6 +19,8 @@ function assert(value) {
   }
 }
 
+const log = console.log.bind(console);
+
 // Proc:
 function procExample() {
   const counter = function *(timeout) {
@@ -28,12 +30,16 @@ function procExample() {
       while (count < 5) {
         yield call(delay, timeout);
         count += 1;
-        console.log(`Count: ${count}`);
+        yield call(log, `Count: ${count}`);
       }
     } finally {
       if (count < 5) {
-        console.log('Counter was cancelled before it ended.');
+        yield call(log, 'Counter was cancelled before it ended.');
       }
+
+      yield call(log, 'delaying end');
+      yield call(delay, 1000);
+      yield call(log, 'actual end');
     }
   };
 
@@ -224,7 +230,7 @@ function serverRenderTest() {
   // only componentWillMount gets called during server rendering.
   const ServerTaskTest = (props) => {
     const fail = function *(props) {
-      throw new Error('fail');
+      throw new Error('This should fail');
     };
 
     return <Task generator={fail} />;
@@ -233,17 +239,8 @@ function serverRenderTest() {
   // This shouldn't throw an error:
   assert(ReactDOMServer.renderToStaticMarkup(<ServerTaskTest />) === '');
 
-  let hadError = false;
-  window.addEventListener("unhandledrejection", event => {
-    // Prevent printing of error in console.
-    event.preventDefault();
-    hadError = true;
-  });
-
   // This should throw an error:
   ReactDOM.render(<ServerTaskTest />, document.createElement('div'));
-
-  setTimeout(() => assert(hadError), 0);
 }
 
 procExample();

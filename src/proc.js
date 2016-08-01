@@ -6,13 +6,15 @@ export function runProc(generatorFn, ...args) {
 
   const promise = new Promise((resolve, reject) => {
     const loopStep = stepResult => {
+      cancelCurrentStep = undefined;
+
       // Call stepProc with the previous step's result until the generator is done.
       if (stepResult.done) {
         resolve(stepResult.value);
       } else {
         const stepPromise = stepProc(generator, stepResult);
         cancelCurrentStep = stepPromise.cancel;
-        stepPromise.then(loopStep);
+        stepPromise.then(loopStep, reject);
       }
     };
 
@@ -22,77 +24,117 @@ export function runProc(generatorFn, ...args) {
   // Allow the proc to be cancelled. This can be used directly, but it can also be used with Promise
   // libraries like Bluebird to make it work properly with things like Promise.all.
   promise.cancel = () => {
-    return cancelCurrentStep();
+    if (cancelCurrentStep) {
+      cancelCurrentStep();
+    }
   };
 
   return promise;
 }
 
 export function stepProc(generator, previousResult = INITIAL_STEP_RESULT) {
-  let waitingPromise = null;
-
-  const waitOnPromise = (promise, resolve) => {
-    waitingPromise = promise;
-
-    promise.then(
-      promiseResult => {
-        resolve({ value: promiseResult, done: false, isError: false });
-        waitingPromise = null;
-      },
-      error => {
-        resolve({ value: error, done: false, isError: true });
-        waitingPromise = null;
-      });
-  };
+  let onCancel;
 
   const promise = new Promise((resolve, reject) => {
+    // Helper functions.
+    let waitingPromise;
+    const waitOnPromise = (promise, resolve) => {
+      waitingPromise = promise;
+
+      promise.then(
+        promiseResult => {
+          resolve({ value: promiseResult, done: false, isError: false });
+          waitingPromise = undefined;
+        },
+        error => {
+          resolve({ value: error, done: false, isError: true });
+          waitingPromise = undefined;
+        });
+    };
+
+    const stopGenerator = () => {
+      let generatorResult;
+
+      try {
+        // Stop the generator by calling return() on it, which will cause it to
+        // jump to its finally {} block if it has one, or simply cause it to
+        // stop execution if it doesn't.
+        generatorResult = generator.return();
+      } catch (error) {
+        // If there was an error during the execution of the finally {} block,
+        // send it to the next promise manually (since stopGenerator's call
+        // chain won't be inside the promise, even though its definition is.)
+        reject(error);
+      }
+
+      // Even though we're stopping the generator, we need to continue the
+      // execution of the generator in case the proc has to yield some more
+      // calls in order to finish cleaning up. This means it's actually possible
+      // for a generator to never stop executing even after being cancelled if
+      // it starts an inifinite loop of yields in its finally {} block or yields
+      // a promise that never returns, for example.
+      //
+      // TODO: Add a kill method to forcefully stop a bad process.
+      handleGeneratorResult(generatorResult, resolve, reject);
+    };
+
+    const handleGeneratorResult = generatorResult => {
+      if (generatorResult.done) {
+        // If the generator is done, finish the step with the final result.
+        resolve({ value: generatorResult.value, done: true, isError: false });
+      } else if (isPromise(generatorResult.value)) {
+        // If the generator yielded a promise, finish the step when the promise resolves.
+        waitOnPromise(generatorResult.value, resolve);
+      } else if (isCall(generatorResult.value)) {
+        // If the generator yielded a call object, call the function contained in
+        // the call object and resolve the result.
+        const call = generatorResult.value;
+        let callResult;
+
+        try {
+          callResult = executeCall(call);
+        } catch (error) {
+          // If there was an error while executing the call, send the error to the
+          // next step so the generator can handle it.
+          resolve({ value: error, done: false, isError: true });
+          return;
+        }
+
+        if (isPromise(callResult) && !call.isSync) {
+          // If the call returned a promise and it wasn't a synchronous call,
+          // finish the step when the promise resolves.
+          waitOnPromise(callResult, resolve);
+        } else {
+          // Otherwise, just finish the step immediately with the result of the call.
+          resolve({ value: callResult, done: false, isError: false });
+        }
+      } else {
+        // Throw an error if the generator yields anything else.
+        reject(new Error('Procs should only yield promises or call objects ' +
+          '(returned by call/callSync/apply/applySync).'));
+      }
+    }
+
+    // This is what will happen when stepProc(...).cancel() is called.
+    onCancel = () => {
+      // If we're currently waiting on a promise that is cancellable, cancel it.
+      if (waitingPromise && typeof waitingPromise.cancel === 'function') {
+        waitingPromise.cancel();
+      }
+
+      stopGenerator();
+    };
+
+    // Actually do the step.
     const generatorResult = previousResult.isError ?
       generator.throw(previousResult.value) :
       generator.next(previousResult.value);
 
-    if (generatorResult.done) {
-      // If the generator is done, finish the step with the final result.
-      resolve({ value: generatorResult.value, done: true, isError: false });
-    } else if (isPromise(generatorResult.value)) {
-      // If the generator yielded a promise, finish the step when the promise resolves.
-      waitOnPromise(generatorResult.value, resolve);
-    } else if (isCall(generatorResult.value)) {
-      // If the generator yielded a call object, call the function contained in
-      // the call object and resolve the result.
-      const call = generatorResult.value;
-      let callResult;
-
-      try {
-        callResult = executeCall(call);
-      } catch (error) {
-        // If there was an error while executing the call, send the error to the
-        // next step so the generator can handle it.
-        resolve({ value: error, done: false, isError: true });
-        return;
-      }
-
-      if (isPromise(callResult) && !call.isSync) {
-        // If the call returned a promise and it wasn't a synchronous call,
-        // finish the step when the promise resolves.
-        waitOnPromise(callResult, resolve);
-      } else {
-        // Otherwise, just finish the step immediately with the result of the call.
-        resolve({ value: callResult, done: false, isError: false });
-      }
-    } else {
-      // Throw an error if the generator yields anything else.
-      reject(new Error('Procs should only yield promises or call objects ' +
-        '(returned by call/callSync/apply/applySync).'));
-    }
+    handleGeneratorResult(generatorResult);
   });
 
   promise.cancel = () => {
-    // If we're currently waiting on a promise that is cancellable, cancel it.
-    if (waitingPromise && typeof waitingPromise.cancel === 'function') {
-      waitingPromise.cancel();
-    }
-
-    return generator.return();
+    onCancel();
   };
 
   return promise;
