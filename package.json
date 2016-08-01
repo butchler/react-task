@@ -15,8 +15,8 @@
   },
   "license": "ISC",
   "dependencies": {
-    "react": "^15.2.1",
-    "deep-equal": "^1.0.1"
+    "react": "^15.0.0",
+    "deep-equal": "^1.0.0"
   },
   "devDependencies": {
     "react-dom": "^15.2.1",
