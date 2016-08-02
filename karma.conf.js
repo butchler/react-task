@@ -21,7 +21,6 @@ module.exports = function(config) {
 
     // list of files to exclude
     exclude: [
-      '**/*.swp'
     ],
 
 
@@ -32,7 +31,6 @@ module.exports = function(config) {
     },
 
     webpack: {
-      // TODO
       resolve: {
         extensions: ['', '.js'],
       },
@@ -46,6 +44,7 @@ module.exports = function(config) {
     plugins: [
       require('karma-webpack'),
       require('karma-mocha'),
+      require('karma-phantomjs-launcher'),
     ],
 
     // test results reporter to use
