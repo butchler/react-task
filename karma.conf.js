@@ -10,13 +10,15 @@ module.exports = function(config) {
 
     // frameworks to use
     // available frameworks: https://npmjs.org/browse/keyword/karma-adapter
-    frameworks: ['mocha', 'chai'],
+    frameworks: ['mocha', 'chai', 'sinon'],
 
     plugins: [
       require('karma-webpack'),
       require('karma-mocha'),
       require('karma-chai'),
+      require('karma-sinon'),
       require('karma-phantomjs-launcher'),
+      require('karma-sourcemap-loader'),
     ],
 
 
@@ -34,10 +36,11 @@ module.exports = function(config) {
     // preprocess matching files before serving them to the browser
     // available preprocessors: https://npmjs.org/browse/keyword/karma-preprocessor
     preprocessors: {
-      'src/*.js': ['webpack'],
+      'src/*.js': ['webpack', 'sourcemap'],
     },
 
     webpack: {
+      devtool: 'inline-source-map',
       resolve: {
         extensions: ['', '.js'],
       },
