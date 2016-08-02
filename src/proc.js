@@ -154,6 +154,9 @@ export function callSync(fn, ...args) {
   return createCall(undefined, fn, args, true);
 }
 export function apply(context, fn, args) {
+  // TODO: Throw an error in non-production environments if you pass any more
+  // than three arguments (just to make sure someone doesn't accidentally use
+  // apply like call.
   return createCall(context, fn, args, false);
 }
 export function applySync(context, fn, args) {
@@ -161,17 +164,19 @@ export function applySync(context, fn, args) {
 }
 
 export function isCall(object) {
-  return object && object[CALL] && typeof object[CALL].fn === 'function';
+  return !!(object && object[CALL]);
 }
 
 export function executeCall(object) {
   const call = object[CALL];
 
+  // Same as doing call.fn.apply(call.context, call.args), but will still work
+  // even if someone mucks with the properties/prototype of call.fn.
   return Function.prototype.apply.call(call.fn, call.context, call.args);
 }
 
 // Checks if an object is a Promise, using the loosest definition of promise
 // possible so that the library will work with non-standard Promises.
 export function isPromise(object) {
-  return object && typeof object.then === 'function';
+  return !!(object && typeof object.then === 'function');
 }
