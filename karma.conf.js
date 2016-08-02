@@ -10,12 +10,19 @@ module.exports = function(config) {
 
     // frameworks to use
     // available frameworks: https://npmjs.org/browse/keyword/karma-adapter
-    frameworks: ['mocha'],
+    frameworks: ['mocha', 'chai'],
+
+    plugins: [
+      require('karma-webpack'),
+      require('karma-mocha'),
+      require('karma-chai'),
+      require('karma-phantomjs-launcher'),
+    ],
 
 
     // list of files / patterns to load in the browser
     files: [
-      'src/*.js',
+      'src/*.spec.js',
     ],
 
 
@@ -40,12 +47,6 @@ module.exports = function(config) {
         ]
       },
     },
-
-    plugins: [
-      require('karma-webpack'),
-      require('karma-mocha'),
-      require('karma-phantomjs-launcher'),
-    ],
 
     // test results reporter to use
     // possible values: 'dots', 'progress'
