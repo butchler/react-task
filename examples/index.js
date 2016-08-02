@@ -206,14 +206,14 @@ function taskExample() {
   function testSync() {
     const task = new TaskTester(<Task generator={CounterTaskSync} id={123} />);
 
-    for (let i = 0; i < 1; i++) {
+    for (let i = 0; i < 10; i++) {
       task
         .calls(delay, 1000).returns(Promise.resolve(true))
         .yieldsPromise()
         .calls(incrementCounter, 123);
     }
 
-    for (let i = 0; i < 1; i++) {
+    for (let i = 0; i < 10; i++) {
       task
         .calls(delay, 1000)
         .skip()

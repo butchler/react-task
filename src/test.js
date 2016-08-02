@@ -12,7 +12,7 @@ export default class TaskTester {
     task.props = element.props;
 
     // Save a reference to the getProps function so that tests can reference
-    // calls to it.
+    // calls to it (.e.g task.calls(task.getProps)).
     this.getProps = task.getProps.bind(task);
 
     const generatorFn = task.getGeneratorFunction(element.props);

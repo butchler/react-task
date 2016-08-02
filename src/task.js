@@ -34,13 +34,14 @@ export default class Task extends React.Component {
     this._getProps = this.getProps.bind(this);
   }
 
-  getGeneratorFunction(props) {
-    return props.generator || this.run.bind(this);
-  }
+  // Public methods
+  // --------------
 
-  // Returns a promise that resolves with the props when they match the given
-  // filter, or resolves with the current props immediately if no filter
-  // function is provided.
+  /**
+   * Returns a promise that resolves with the props when they match the given
+   * filter, or resolves with the current props immediately if no filter
+   * function is provided.
+   */
   getProps(filterFn = (() => true)) {
     return new Promise((resolve, reject) => {
       // Check and resolve immediately if the props already match the filter.
@@ -61,16 +62,30 @@ export default class Task extends React.Component {
     });
   }
 
-  propsChanged(nextProps) {
-    this._events.emit('propsChanged', nextProps);
+  getGeneratorFunction(props) {
+    return props.generator || this.run.bind(this);
+  }
+
+  // Methods for child classes to override
+  // -------------------------------------
+
+  /**
+   * Generator method that performs side effects by yielding calls to
+   * proc.call/apply.
+   */
+  run() {
+    throw new Error('Subclasses of Task must override the run() method, or a ' +
+        'generator={...} prop must be passed to the Task component.');
   }
 
   // React lifecycle methods
   // -----------------------
+  //
+  // Starts a proc (which is basically a background process that runs a
+  // generator function) when the Task component gets mounted, and stop the proc
+  // when it gets unmounted.
+  //
 
-  // Start a Proc (which is basically a background process that runs a
-  // generator function) when the Task component gets mounted, and stop the
-  // proc when it gets unmounted.
   componentDidMount() {
     this._start(this.props);
   }
@@ -81,7 +96,7 @@ export default class Task extends React.Component {
       this._stop();
       this._start(nextProps);
     } else {
-      this.propsChanged(nextProps);
+      this._events.emit('propsChanged', nextProps);
     }
   }
 
@@ -96,15 +111,6 @@ export default class Task extends React.Component {
 
   render() {
     return null;
-  }
-
-  // Methods for child classes to override
-  // -------------------------------------
-
-  // Generator method that performs side effects by yielding calls to proc.call/apply.
-  run() {
-    throw new Error('Subclasses of Task must override the run() method, or a ' +
-        'generator={...} prop must be passed to the Task component.');
   }
 
   // "Private" methods
