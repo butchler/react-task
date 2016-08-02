@@ -45,7 +45,7 @@ export default class Task extends React.Component {
     return new Promise((resolve, reject) => {
       // Check and resolve immediately if the props already match the filter.
       if (filterFn(this.props)) {
-        resolve(nextProps);
+        resolve(this.props);
         return;
       }
 
