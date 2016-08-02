@@ -3,6 +3,7 @@ import {
   isPromise,
   executeCall,
   call, callSync,
+  callMethod, callMethodSync,
   apply, applySync,
   stepProc,
   runProc,
@@ -89,6 +90,16 @@ describe('executeCall', () => {
     const fn2 = (x, y) => x + y;
     expect(executeCall(call(fn2, 1, 2))).to.be.three;
     expect(executeCall(callSync(fn2, 1, 2))).to.be.three;
+  });
+
+  it('returns result of callMethod/callMethodSync', () => {
+    const object = {
+      x: 1,
+      method1: () => true,
+      method2: function (y) { return this.x + y; },
+    };
+    expect(executeCall(callMethod(object, 'method1'))).to.be.true;
+    expect(executeCall(callMethod(object, 'method2', 2))).to.be.three;
   });
 
   it('returns result of apply/applySync', () => {
