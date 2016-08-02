@@ -153,6 +153,12 @@ export function call(fn, ...args) {
 export function callSync(fn, ...args) {
   return createCall(undefined, fn, args, true);
 }
+export function callMethod(object, methodName, ...args) {
+  return createCall(object, object[methodName], args, false);
+}
+export function callMethodSync(object, methodName, ...args) {
+  return createCall(object, object[methodName], args, true);
+}
 export function apply(context, fn, args) {
   // TODO: Throw an error in non-production environments if you pass any more
   // than three arguments (just to make sure someone doesn't accidentally use
