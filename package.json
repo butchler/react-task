@@ -6,7 +6,7 @@
   "scripts": {
     "test": "karma start",
     "dev-server": "webpack-dev-server -d --config examples/webpack.config.js --inline --content-base examples",
-    "build": "babel src --out-dir ."
+    "build": "rm index.js proc.js task.js test.js promises.js && babel src --ignore *.spec.js --out-dir ."
   },
   "author": "Adam Buechler",
   "repository": {
