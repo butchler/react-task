@@ -8,14 +8,13 @@ import { runProc } from './proc';
  *
  * A Task component starts a Proc (which is basically a background process that
  * runs a generator function) when it gets mounted, and stops the Proc when it
- * gets unmounted.
+ * gets unmounted (or when the value of the generator prop gets changed).
  *
- * To define a Task, create a new class that extends Task and overrides the
- * *run() generator method.
- *
- * Alternatively, you can just pass a generator function to the "generator"
- * prop, and all other props will be passed as the first argument to the
- * function.
+ * The generator function will get passed a `getProps` function, which returns a
+ * promise that resolves with the component's current props. If you pass a
+ * function to the getProps function, the props will be passed to that function
+ * and the promise returned by getProps will only resolve once that function
+ * returns a truthy value.
  *
  * NOTE: A Task will only stop its Proc when it gets unmounted or the generator
  * prop is changed. To restart a Task with new props, pass a unique "key" prop,
@@ -62,22 +61,6 @@ export default class Task extends React.Component {
     });
   }
 
-  getGeneratorFunction(props) {
-    return props.generator || this.run.bind(this);
-  }
-
-  // Methods for child classes to override
-  // -------------------------------------
-
-  /**
-   * Generator method that performs side effects by yielding calls to
-   * proc.call/apply.
-   */
-  run() {
-    throw new Error('Subclasses of Task must override the run() method, or a ' +
-        'generator={...} prop must be passed to the Task component.');
-  }
-
   // React lifecycle methods
   // -----------------------
   //
@@ -116,8 +99,8 @@ export default class Task extends React.Component {
   // "Private" methods
   // -----------------
 
-  _start(props) {
-    const promise = runProc(this.getGeneratorFunction(props), props, this._getProps);
+  _start() {
+    const promise = runProc(this.props.generator, this._getProps);
     this._stopProc = promise.cancel;
   }
 
@@ -129,7 +112,7 @@ export default class Task extends React.Component {
 }
 
 Task.propTypes = {
-  generator: React.PropTypes.func,
+  generator: React.PropTypes.func.isRequired,
   children: (props, propName, componentName) => {
     if (props.children) {
       return new Error('Task components should not have any children. To organize ' +

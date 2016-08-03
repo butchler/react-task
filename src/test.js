@@ -4,19 +4,12 @@ import { apply, applySync, isPromise } from './proc';
 import deepEqual from 'deep-equal';
 
 export default class TaskTester {
-  constructor(element) {
-    // TODO: Throw an error if element isn't a subclass of Task.
-    const task = new element.type();
+  constructor(generatorFunction) {
+    // Create a dummy function just so that we can test for calls to the
+    // getProps function passed to the generator (.e.g task.calls(task.getProps)).
+    this.getProps = () => undefined;
 
-    // Set the props so they can be referenced by the run() method.
-    task.props = element.props;
-
-    // Save a reference to the getProps function so that tests can reference
-    // calls to it (.e.g task.calls(task.getProps)).
-    this.getProps = task.getProps.bind(task);
-
-    const generatorFn = task.getGeneratorFunction(element.props);
-    this.generator = generatorFn(element.props, this.getProps);
+    this.generator = generatorFunction(this.getProps);
   }
 
   /**

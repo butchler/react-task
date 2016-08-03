@@ -40,7 +40,9 @@ function render(text) {
   );
 }
 
-function *logger({ text }) {
+function *logger(getProps) {
+  const { text } = yield call(getProps);
+
   if (!text) return;
 
   while (true) {

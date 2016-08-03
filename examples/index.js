@@ -97,23 +97,26 @@ function taskExample() {
     return <div>{counterTasks}</div>;
   };
 
-  const CounterTask = class CounterTask extends Task {
-    *run() {
-      try {
-        const { id } = this.props;
+  const counterTask = function* (getProps) {
+    try {
+      const { id } = yield call(getProps);
 
-        // It's okay to have an infinite loop inside a task as long as it yields
-        // inside the loop. The Proc running the task will be stopped when the Task
-        // component gets unmounted.
-        while (true) {
-          yield call(delay, 1000);
-          yield call(incrementCounter, id);
-        }
-      } finally {
-        // Use a finally block to perform clean up when a Task gets stopped.
-        console.log('Task was unmounted and stopped.');
+      // It's okay to have an infinite loop inside a task as long as it yields
+      // inside the loop. The Proc running the task will be stopped when the Task
+      // component gets unmounted.
+      while (true) {
+        yield call(delay, 1000);
+        yield call(incrementCounter, id);
       }
+    } finally {
+      // Use a finally block to perform clean up when a Task gets stopped.
+      console.log('Task was unmounted and stopped.');
     }
+  };
+
+  // If you want you can make a helper stateless component to render the task.
+  const CounterTask = ({ id }) => {
+    return <Task generator={counterTask} id={id} />;
   };
 
   //
@@ -163,9 +166,17 @@ function taskExample() {
     // To test a single Task, you can iterate through its generator and compare
     // against the call objects it yields, just like Redux Sagas, but simpler
     // because Proc only supports call/apply effects:
-    const task = new CounterTask();
-    task.props = { id: 123 };
-    const gen = task.run();
+    //
+    // We can just pass a fake getProps function in since we'll fake its results
+    // using Generator.next() anyway.
+    const getProps = () => undefined;
+    const gen = counterTask(getProps);
+    // Get the first call object, which should be a call to getProps.
+    assert(deepEqual(gen.next().value, call(getProps)));
+    // Pass the initial props to the generator and skip the first iteration of
+    // the loop.
+    gen.next({ id: 123 });
+    gen.next();
 
     for (let i = 0; i < 10; i++) {
       assert(deepEqual(gen.next().value, call(delay, 1000)));
@@ -173,7 +184,9 @@ function taskExample() {
     }
 
     // The same test using a helper for testing tasks:
-    const taskTester = new TaskTester(<CounterTask id={123} />);
+    const taskTester = new TaskTester(counterTask);
+
+    taskTester.calls(taskTester.getProps).returns({ id: 123 });
 
     for (let i = 0; i < 10; i++) {
       taskTester.calls(delay, 1000).calls(incrementCounter, 123);
@@ -192,7 +205,9 @@ function taskExample() {
   render();
   testTaskExample();
 
-  function *CounterTaskSync({ id }) {
+  function *counterTaskSync(getProps) {
+    const { id } = yield call(getProps);
+
     // It's okay to have an infinite loop inside a task as long as it yields
     // inside the loop. The Proc running the task will be stopped when the Task
     // component gets unmounted.
@@ -204,7 +219,9 @@ function taskExample() {
   }
 
   function testSync() {
-    const task = new TaskTester(<Task generator={CounterTaskSync} id={123} />);
+    const task = new TaskTester(counterTaskSync);
+
+    task.calls(task.getProps).returns({ id: 123 });
 
     for (let i = 0; i < 10; i++) {
       task
@@ -213,6 +230,7 @@ function taskExample() {
         .calls(incrementCounter, 123);
     }
 
+    // You can also just ignore the yield to the promise using skip().
     for (let i = 0; i < 10; i++) {
       task
         .calls(delay, 1000)
