@@ -1,2 +1,2 @@
 export { default as Task } from './task';
-export { call, callSync, apply, applySync } from './proc';
+export { call, callSync, callMethod, callMethodSync, apply, applySync } from './proc';
