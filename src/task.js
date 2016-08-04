@@ -1,5 +1,4 @@
 import React from 'react';
-import EventEmitter from 'events';
 
 import { runProc } from './proc';
 
@@ -29,7 +28,7 @@ export default class Task extends React.Component {
     super();
 
     // Private variables.
-    this._events = new EventEmitter();
+    this._onPropsReceived = null;
     this._getProps = this.getProps.bind(this);
   }
 
@@ -49,15 +48,17 @@ export default class Task extends React.Component {
         return;
       }
 
-      const handlePropsChanged = (nextProps) => {
-        if (filterFn(nextProps)) {
-          resolve(nextProps);
-          this._events.removeListener('propsChanged', handlePropsChanged);
-        }
-      };
+      if (this._onPropsReceived !== null) {
+        throw new Error('Cannot call getProps more than once at a time.');
+      }
 
       // Check if the props match the filter whenever they change.
-      this._events.on('propsChanged', handlePropsChanged);
+      this._onPropsReceived = (nextProps) => {
+        if (filterFn(nextProps)) {
+          resolve(nextProps);
+          this._onPropsReceived = null
+        }
+      };
     });
   }
 
@@ -77,9 +78,11 @@ export default class Task extends React.Component {
     if (this.props.generator !== nextProps.generator) {
       // If the generator has changed, stop the old Proc and start a new one.
       this._stop();
-      this._start(nextProps);
+      this._start();
     } else {
-      this._events.emit('propsChanged', nextProps);
+      if (this._onPropsReceived !== null) {
+        this._onPropsReceived(nextProps);
+      }
     }
   }
 
