@@ -1,9 +1,16 @@
 var path = require('path');
 
 module.exports = {
-  entry: path.resolve(__dirname, 'index.js'),
+  entry: {
+    proc: path.join(__dirname, 'proc', 'index.js'),
+    counters: path.join(__dirname, 'counters', 'index.js'),
+  },
   output: {
-    filename: 'bundle.js',
+    path: __dirname,
+    filename: '[name]/bundle.js',
+  },
+  resolve: {
+    root: path.join(__dirname, '..'),
   },
   module: {
     loaders: [
