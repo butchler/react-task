@@ -1,6 +1,6 @@
 {
   "name": "react-task",
-  "version": "1.0.2",
+  "version": "1.1.0",
   "description": "Experimental side-effect model for React",
   "main": "index.js",
   "scripts": {
