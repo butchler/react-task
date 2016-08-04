@@ -4,6 +4,7 @@ module.exports = {
   entry: {
     proc: path.join(__dirname, 'proc', 'index.js'),
     counters: path.join(__dirname, 'counters', 'index.js'),
+    'redux-counters': path.join(__dirname, 'redux-counters', 'index.js'),
   },
   output: {
     path: __dirname,
