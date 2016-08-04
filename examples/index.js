@@ -10,7 +10,23 @@ import CounterTasks from './containers/CounterTasks';
 
 import counterList from './reducers/counterList';
 
-const store = createStore(counterList);
+// Set up saving/loading/deleting of state.
+const SAVED_STATE = 'saved-state';
+
+document.getElementById('save-state-button').addEventListener('click', e => {
+  localStorage.setItem(SAVED_STATE, JSON.stringify(store.getState()));
+});
+document.getElementById('delete-state-button').addEventListener('click', e => {
+  localStorage.removeItem(SAVED_STATE);
+});
+
+let initialState = undefined;
+if (localStorage.getItem(SAVED_STATE)) {
+  initialState = JSON.parse(localStorage.getItem(SAVED_STATE));
+}
+
+// Set up the store.
+const store = createStore(counterList, initialState);
 
 // Render the UI.
 const appContainer = document.getElementById('app-container');
