@@ -4,9 +4,11 @@
   "description": "Experimental side-effect model for React",
   "main": "index.js",
   "scripts": {
+    "prepublish": "npm run clean && npm run build",
     "test": "karma start",
     "dev-server": "webpack-dev-server -d --config examples/webpack.config.js --inline --content-base examples",
-    "build": "rm index.js proc.js task.js test.js promises.js && babel src --ignore *.spec.js --out-dir ."
+    "clean": "rm -f index.js proc.js task.js test.js promises.js",
+    "build": "babel src --ignore *.spec.js --out-dir ."
   },
   "author": "Adam Buechler",
   "repository": {
