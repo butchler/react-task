@@ -38,7 +38,7 @@ export function stepProc(generator, previousResult = INITIAL_STEP_RESULT) {
   const promise = new Promise((resolve, reject) => {
     // Helper functions.
     let waitingPromise;
-    const waitOnPromise = (promise, resolve) => {
+    const waitOnPromise = (promise) => {
       waitingPromise = promise;
 
       promise.then(
@@ -84,7 +84,7 @@ export function stepProc(generator, previousResult = INITIAL_STEP_RESULT) {
         resolve({ value: generatorResult.value, done: true, isError: false });
       } else if (isPromise(generatorResult.value)) {
         // If the generator yielded a promise, finish the step when the promise resolves.
-        waitOnPromise(generatorResult.value, resolve);
+        waitOnPromise(generatorResult.value);
       } else if (isCall(generatorResult.value)) {
         // If the generator yielded a call object, call the function contained in
         // the call object and resolve the result.
@@ -100,10 +100,10 @@ export function stepProc(generator, previousResult = INITIAL_STEP_RESULT) {
           return;
         }
 
-        if (isPromise(callResult) && !call.isSync) {
+        if (isPromise(callResult) && !call[CALL].isSync) {
           // If the call returned a promise and it wasn't a synchronous call,
           // finish the step when the promise resolves.
-          waitOnPromise(callResult, resolve);
+          waitOnPromise(callResult);
         } else {
           // Otherwise, just finish the step immediately with the result of the call.
           resolve({ value: callResult, done: false, isError: false });
@@ -121,6 +121,7 @@ export function stepProc(generator, previousResult = INITIAL_STEP_RESULT) {
       if (waitingPromise && typeof waitingPromise.cancel === 'function') {
         waitingPromise.cancel();
       }
+      waitingPromise = undefined;
 
       stopGenerator();
     };
