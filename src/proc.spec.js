@@ -1,3 +1,6 @@
+// Needed to be able to use generator functions.
+import 'babel-polyfill';
+
 import {
   isCall,
   isPromise,
@@ -119,7 +122,175 @@ describe('executeCall', () => {
   });
 
   // TODO: Find out why this doesn't work.
-  //it('throws for anything other than a call object', () => {
-    //expect(executeCall({})).to.throw(TypeError);
-  //});
+  it('throws for anything other than a call object', () => {
+    expect(() => executeCall()).to.throw(TypeError);
+    expect(() => executeCall({})).to.throw(TypeError);
+    expect(() => executeCall([])).to.throw(TypeError);
+    expect(() => executeCall('')).to.throw(TypeError);
+    expect(() => executeCall(1)).to.throw(TypeError);
+    expect(() => executeCall(null)).to.throw(TypeError);
+  });
+});
+
+describe('stepProc', () => {
+  it.skip('throws with bad generator', () => {
+  });
+
+  it.skip('throws with bad previousResult', () => {
+  });
+
+  it('resolves with result of generator function', (done) => {
+    const genFn = function* () { return 123; };
+
+    stepProc(genFn()).then(result => {
+      expect(result).to.eql({ value: 123, done: true, isError: false });
+      done();
+    });
+  });
+
+  it('makes a call when a call object is yielded', (done) => {
+    const add = (x, y) => x + y;
+    const genFn = function* () { yield call(add, 1, 2); };
+    const gen = genFn();
+
+    stepProc(gen).then(result => {
+      expect(result).to.eql({ value: 3, done: false, isError: false });
+      stepProc(gen, result).then(result => {
+        expect(result).to.eql({ value: undefined, done: true, isError: false });
+        done();
+      });
+    });
+  });
+
+  it('waits for the promise when a promise is yielded', (done) => {
+    let resolvePromise;
+    const promise = new Promise((resolve, reject) => {
+      resolvePromise = () => resolve(123);
+    });
+    const genFn = function* () { yield promise; };
+    const gen = genFn();
+    const spy = sinon.spy();
+
+    stepProc(gen).then(spy);
+
+    setTimeout(() => {
+      expect(spy.called).to.be.false;
+      resolvePromise();
+      setTimeout(() => {
+        expect(spy.args).to.eql([[{ value: 123, done: false, isError: false }]]);
+        done();
+      }, 0);
+    }, 0);
+  });
+
+  it('waits on the promise when a yielded call returns a promise', (done) => {
+    let resolvePromise;
+    const getPromise = () => {
+      return new Promise((resolve, reject) => {
+        resolvePromise = () => resolve(123);
+      });
+    };
+    const genFn = function* () { yield call(getPromise); };
+    const gen = genFn();
+    const spy = sinon.spy();
+
+    stepProc(gen).then(spy);
+
+    setTimeout(() => {
+      expect(spy.called).to.be.false;
+      resolvePromise();
+      setTimeout(() => {
+        expect(spy.args).to.eql([[{ value: 123, done: false, isError: false }]]);
+        done();
+      }, 0);
+    }, 0);
+  });
+
+  it("doesn't wait on the promise when using callSync", (done) => {
+    let promise;
+    const getPromise = () => {
+      promise = Promise.resolve(true);
+      return promise;
+    };
+    const genFn = function* () { yield callSync(getPromise); };
+    const gen = genFn();
+
+    stepProc(gen).then(result => {
+      expect(result).to.eql({ value: promise, done: false, isError: false });
+      done();
+    });
+  });
+
+  it('rejects if generator yields anything other than a promise or call object', (done) => {
+    const NUM_THROWS = 10;
+    let threwCount = 0;
+    const yieldThrows = value => {
+      const genFn = function* () { yield value; };
+      const gen = genFn();
+      const resolve = sinon.spy(), reject = sinon.spy();
+
+      stepProc(gen).then(resolve, reject);
+
+      setTimeout(() => {
+        expect(resolve.called).to.be.false;
+        expect(reject.called).to.be.true;
+
+        threwCount += 1;
+        if (threwCount === NUM_THROWS) {
+          done();
+        }
+      }, 0);
+    };
+
+    yieldThrows(undefined);
+    yieldThrows(null);
+    yieldThrows('');
+    yieldThrows('abc');
+    yieldThrows(123);
+    yieldThrows({ a: 1 });
+    yieldThrows([]);
+    yieldThrows([1, 2, 3]);
+    yieldThrows(new Error('error'));
+    yieldThrows({ then: 'not a promise' });
+  });
+
+  it('rejects if generator throws an error', (done) => {
+    const genFn = function* () { throw 'error'; };
+    const gen = genFn();
+
+    stepProc(gen).then().catch(error => {
+      expect(error).to.equal('error');
+      done();
+    });
+  });
+
+  it('resolves with isError === true when the yielded call throws an error', (done) => {
+    const throwsError = () => { throw 'error'; };
+    const genFn = function* () { yield call(throwsError); };
+    const gen = genFn();
+
+    stepProc(gen).then(result => {
+      expect(result).to.eql({ value: 'error', done: false, isError: true });
+      done();
+    });
+  });
+
+  it('rejects if an error from a yielded call is unhandled', (done) => {
+    const throwsError = () => { throw 'error'; };
+    const genFn = function* () { yield call(throwsError); };
+    const gen = genFn();
+
+    stepProc(gen).then(result => {
+      stepProc(gen, result).then().catch(error => {
+        expect(error).to.equal('error');
+        done();
+      });
+    });
+  });
+
+  it.skip('executes finally block when cancel is called', (done) => {
+  });
+
+  it.skip('cancels the current promise when cancel is called', (done) => {
+  });
 });
