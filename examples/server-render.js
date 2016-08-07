@@ -18,7 +18,7 @@ function serverRenderTest() {
       throw new Error('This should fail');
     };
 
-    return React.createElement(Task, { generator: fail });
+    return React.createElement(Task, { proc: fail });
   };
 
   // This shouldn't throw an error:

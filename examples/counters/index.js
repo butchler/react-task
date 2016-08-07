@@ -91,7 +91,7 @@ function *counterTaskSync(getProps) {
 
 // If you want you can make a helper stateless component to render the task.
 function CounterTask({ id }) {
-  return <Task generator={counterTask} id={id} />;
+  return <Task proc={counterTask} id={id} />;
 }
 
 function addCounter() {

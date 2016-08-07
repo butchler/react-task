@@ -34,7 +34,7 @@ function render(text) {
     <div>
       <input id="text" type="text" placeholder="Enter some text to console.log" />
       <button onClick={() => render(document.getElementById('text').value)}>Update Text</button>
-      <Task key={text} generator={logger} text={text} />
+      <Task key={text} proc={logger} text={text} />
     </div>,
     document.getElementById('app-container')
   );

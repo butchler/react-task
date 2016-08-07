@@ -1,6 +1,5 @@
 import React from 'react';
-import { Task, call } from 'src';
-import { callMethod } from 'src/proc';
+import { Task, call, callMethod } from 'src';
 import { delay } from 'src/promises';
 
 function* counterTask(getProps) {
@@ -20,5 +19,5 @@ function* counterTask(getProps) {
 }
 
 export default function CounterTask(props) {
-  return <Task generator={counterTask} {...props} />;
+  return <Task proc={counterTask} {...props} />;
 }
