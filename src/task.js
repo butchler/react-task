@@ -29,11 +29,10 @@ export default class Task extends React.Component {
 
     // Private variables.
     this._onPropsReceived = null;
+    this._stopProc = null;
     this._getProps = this.getProps.bind(this);
+    this._onCall = this.onCall.bind(this);
   }
-
-  // Public methods
-  // --------------
 
   /**
    * Returns a promise that resolves with the props when they match the given
@@ -56,10 +55,29 @@ export default class Task extends React.Component {
       this._onPropsReceived = (nextProps) => {
         if (filterFn(nextProps)) {
           resolve(nextProps);
-          this._onPropsReceived = null
+          this._onPropsReceived = null;
         }
       };
     });
+  }
+
+  /**
+   * Updates the state with the result of the last call for debugging purposes.
+   */
+  onCall(call, callResult) {
+    this.setState({ lastCall: call, lastCallResult: callResult });
+  }
+
+  start() {
+    const procPromise = runProc(this.props.generator(this._getProps), this._onCall);
+    this._stopProc = procPromise.cancel;
+  }
+
+  stop() {
+    if (this._stopProc) {
+      this._stopProc();
+      this._stopProc = null;
+    }
   }
 
   // React lifecycle methods
@@ -71,14 +89,14 @@ export default class Task extends React.Component {
   //
 
   componentDidMount() {
-    this._start(this.props);
+    this.start(this.props);
   }
 
   componentWillReceiveProps(nextProps) {
     if (this.props.generator !== nextProps.generator) {
       // If the generator has changed, stop the old Proc and start a new one.
-      this._stop();
-      this._start();
+      this.stop();
+      this.start();
     } else {
       if (this._onPropsReceived !== null) {
         this._onPropsReceived(nextProps);
@@ -87,7 +105,7 @@ export default class Task extends React.Component {
   }
 
   componentWillUnmount() {
-    this._stop();
+    this.stop();
   }
 
   // Task components never render anything by default.
@@ -97,20 +115,6 @@ export default class Task extends React.Component {
 
   render() {
     return null;
-  }
-
-  // "Private" methods
-  // -----------------
-
-  _start() {
-    const promise = runProc(this.props.generator, this._getProps);
-    this._stopProc = promise.cancel;
-  }
-
-  _stop() {
-    if (this._stopProc) {
-      this._stopProc();
-    }
   }
 }
 

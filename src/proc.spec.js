@@ -9,7 +9,11 @@ import {
   callMethod, callMethodSync,
   apply, applySync,
   stepProc,
+  stopProc,
   runProc,
+  run,
+  RESULT_TYPE_NORMAL,
+  RESULT_TYPE_ERROR,
 } from './proc';
 
 describe('isCall', () => {
@@ -53,12 +57,11 @@ describe('isCall', () => {
 });
 
 describe('isPromise', () => {
-  // PhantomJS does not have native promises yet.
-  //it('works with native promises', () => {
-    //expect(isPromise(new Promise((resolve, reject) => undefined))).to.be.true;
-  //});
+  it('works with babel-polyfill promises', () => {
+    expect(isPromise(new Promise((resolve, reject) => undefined))).to.be.true;
+  });
 
-  // TODO: Make sure it works with a Promise library.
+  // TODO: Make sure it works with a Promise library other than babel-polyfill's.
 
   it('works with plain object style Promises', () => {
     expect(isPromise({ then: x => x })).to.be.true;
@@ -133,17 +136,64 @@ describe('executeCall', () => {
 });
 
 describe('stepProc', () => {
-  it.skip('throws with bad generator', () => {
+  it('rejects with bad generator', (done) => {
+    const NUM_REJECTS = 10;
+    let rejectedCount = 0;
+    const rejects = value => {
+      stepProc(value).then().catch(error => {
+        expect(error).to.be.an('error');
+
+        rejectedCount += 1;
+        if (rejectedCount === NUM_REJECTS) {
+          done();
+        }
+      });
+    };
+
+    rejects(undefined);
+    rejects(null);
+    rejects('');
+    rejects('abc');
+    rejects(123);
+    rejects({ a: 1 });
+    rejects([]);
+    rejects([1, 2, 3]);
+    rejects(new Error('error'));
+    rejects({ next: true, throw: true, return: true });
   });
 
-  it.skip('throws with bad previousResult', () => {
+  it('rejects with bad previousResult', (done) => {
+    const NUM_REJECTS = 8;
+    let rejectedCount = 0;
+    const rejects = value => {
+      const genFn = function* () {};
+      const gen = genFn();
+
+      stepProc(gen, value).then().catch(error => {
+        expect(error).to.be.an('error');
+
+        rejectedCount += 1;
+        if (rejectedCount === NUM_REJECTS) {
+          done();
+        }
+      });
+    };
+
+    rejects(null);
+    rejects('');
+    rejects('abc');
+    rejects(123);
+    rejects({ a: 1 });
+    rejects([]);
+    rejects([1, 2, 3]);
+    rejects(new Error('error'));
   });
 
   it('resolves with result of generator function', (done) => {
     const genFn = function* () { return 123; };
 
     stepProc(genFn()).then(result => {
-      expect(result).to.eql({ value: 123, done: true, isError: false });
+      expect(result).to.contain.keys({ value: 123, done: true });
       done();
     });
   });
@@ -154,9 +204,9 @@ describe('stepProc', () => {
     const gen = genFn();
 
     stepProc(gen).then(result => {
-      expect(result).to.eql({ value: 3, done: false, isError: false });
+      expect(result).to.contain.keys({ value: 3, done: false });
       stepProc(gen, result).then(result => {
-        expect(result).to.eql({ value: undefined, done: true, isError: false });
+        expect(result).to.contain.keys({ value: undefined, done: true });
         done();
       });
     });
@@ -177,7 +227,8 @@ describe('stepProc', () => {
       expect(spy.called).to.be.false;
       resolvePromise();
       setTimeout(() => {
-        expect(spy.args).to.eql([[{ value: 123, done: false, isError: false }]]);
+        expect(spy.callCount).to.equal(1);
+        expect(spy.firstCall.args[0]).to.contain.keys({ value: 123, done: false });
         done();
       }, 0);
     }, 0);
@@ -200,7 +251,8 @@ describe('stepProc', () => {
       expect(spy.called).to.be.false;
       resolvePromise();
       setTimeout(() => {
-        expect(spy.args).to.eql([[{ value: 123, done: false, isError: false }]]);
+        expect(spy.callCount).to.equal(1);
+        expect(spy.firstCall.args[0]).to.contain.keys({ value: 123, done: false });
         done();
       }, 0);
     }, 0);
@@ -216,42 +268,38 @@ describe('stepProc', () => {
     const gen = genFn();
 
     stepProc(gen).then(result => {
-      expect(result).to.eql({ value: promise, done: false, isError: false });
+      expect(result).to.contain.keys({ value: promise, done: false });
       done();
     });
   });
 
   it('rejects if generator yields anything other than a promise or call object', (done) => {
-    const NUM_THROWS = 10;
-    let threwCount = 0;
-    const yieldThrows = value => {
+    const NUM_REJECTS = 10;
+    let rejectedCount = 0;
+    const rejects = value => {
       const genFn = function* () { yield value; };
       const gen = genFn();
-      const resolve = sinon.spy(), reject = sinon.spy();
 
-      stepProc(gen).then(resolve, reject);
+      stepProc(gen).then().catch(error => {
+        expect(error).to.be.an('error');
 
-      setTimeout(() => {
-        expect(resolve.called).to.be.false;
-        expect(reject.called).to.be.true;
-
-        threwCount += 1;
-        if (threwCount === NUM_THROWS) {
+        rejectedCount += 1;
+        if (rejectedCount === NUM_REJECTS) {
           done();
         }
-      }, 0);
+      });
     };
 
-    yieldThrows(undefined);
-    yieldThrows(null);
-    yieldThrows('');
-    yieldThrows('abc');
-    yieldThrows(123);
-    yieldThrows({ a: 1 });
-    yieldThrows([]);
-    yieldThrows([1, 2, 3]);
-    yieldThrows(new Error('error'));
-    yieldThrows({ then: 'not a promise' });
+    rejects(undefined);
+    rejects(null);
+    rejects('');
+    rejects('abc');
+    rejects(123);
+    rejects({ a: 1 });
+    rejects([]);
+    rejects([1, 2, 3]);
+    rejects(new Error('error'));
+    rejects({ then: 'not a promise' });
   });
 
   it('rejects if generator throws an error', (done) => {
@@ -270,7 +318,7 @@ describe('stepProc', () => {
     const gen = genFn();
 
     stepProc(gen).then(result => {
-      expect(result).to.eql({ value: 'error', done: false, isError: true });
+      expect(result).to.contain.keys({ value: 'error', done: false, type: RESULT_TYPE_ERROR });
       done();
     });
   });
@@ -288,9 +336,328 @@ describe('stepProc', () => {
     });
   });
 
-  it.skip('executes finally block when cancel is called', (done) => {
+  it('executes finally block when cancel is called', (done) => {
+    const genFn = function* () {
+      try {
+        return 'try';
+      } finally {
+        return 'finally';
+      }
+    };
+    const gen = genFn();
+
+    const step = stepProc(gen);
+    step.then(result => {
+      expect(result).to.contain.keys({ value: 'finally', done: true });
+      done();
+    });
+    step.cancel();
   });
 
-  it.skip('cancels the current promise when cancel is called', (done) => {
+  it('cancels the current promise when cancel is called', () => {
+    const cancellablePromise = new Promise((resolve, reject) => undefined);
+    cancellablePromise.cancel = sinon.spy();
+
+    const genFn = function* () { yield cancellablePromise; };
+    const gen = genFn();
+
+    const step = stepProc(gen);
+    step.cancel();
+    expect(cancellablePromise.cancel.calledOnce).to.be.true;
+  });
+
+  it('cancels the promise for the current call when cancel is called', () => {
+    const cancellablePromise = new Promise((resolve, reject) => undefined);
+    cancellablePromise.cancel = sinon.spy();
+
+    const returnsCancellablePromise = () => cancellablePromise;
+
+    const genFn = function* () { yield call(returnsCancellablePromise); };
+    const gen = genFn();
+
+    const step = stepProc(gen);
+    step.cancel();
+    expect(cancellablePromise.cancel.calledOnce).to.be.true;
+  });
+
+  it("only cancels promise once if you call cancel multiple times", () => {
+    const cancellablePromise = Promise.resolve(true);
+    cancellablePromise.cancel = sinon.spy();
+
+    const genFn = function* () { yield cancellablePromise; };
+    const gen = genFn();
+
+    const step = stepProc(gen);
+    step.cancel();
+    step.cancel();
+    step.cancel();
+    expect(cancellablePromise.cancel.calledOnce).to.be.true;
   });
 });
+
+describe('stopProc', () => {
+  it('breaks out to the next finally block', (done) => {
+    const spy = sinon.spy();
+
+    const genFn = function* () {
+      try {
+        try {
+          yield call(spy, 'try');
+          spy('not called');
+        } finally {
+          yield call(spy, 'inner finally');
+          spy('not called');
+        }
+      } finally {
+        yield call(spy, 'outer finally');
+        spy('not called');
+      }
+    };
+    const gen = genFn();
+
+    let step = stepProc(gen);
+    step.then(result => {
+      expect(result.done).to.be.false;
+      expect(spy.firstCall.args).to.eql(['try']);
+
+      step = stopProc(gen);
+      step.then(result => {
+        expect(result.done).to.be.false;
+        expect(spy.secondCall.args).to.eql(['inner finally']);
+
+        step = stopProc(gen);
+        step.then(result => {
+          expect(result.done).to.be.false;
+          expect(spy.thirdCall.args).to.eql(['outer finally']);
+
+          done();
+        });
+      });
+    });
+  });
+
+  it("doesn't do anything if the proc is already finished executing", (done) => {
+    const spy = sinon.spy();
+    const genFn = function* () { spy() };
+    const gen = genFn();
+
+    let step = stepProc(gen);
+    step.then(result => {
+      expect(result.done).to.be.true;
+      expect(spy.calledOnce).to.be.true;
+
+      step = stopProc(gen);
+      step.then(result => {
+        expect(result.done).to.be.true;
+        expect(spy.calledOnce).to.be.true;
+
+        done();
+      });
+    });
+  });
+});
+
+describe('run', () => {
+  it('passes all of the args to the generator function', (done) => {
+    const genFn = function* (a, b, c) {
+      return a + b + c;
+    };
+
+    run(genFn, 1, 2, 3).then(result => {
+      expect(result).to.equal(6);
+      done();
+    });
+  });
+});
+
+describe('runProc', () => {
+  it('resolves with result of the generator function', (done) => {
+    const genFn = function* () {
+      yield Promise.resolve(1);
+      yield Promise.resolve(2);
+      return yield Promise.resolve(3);
+    };
+
+    run(genFn).then(result => {
+      expect(result).to.equal(3);
+      done();
+    });
+  });
+
+  it('works with all of the call/apply variants', (done) => {
+    const object = {
+      x: 1,
+      method: function (y) { return this.x + y; },
+      returnsPromise: function () { return Promise.resolve(this.x); },
+    };
+    const promise = Promise.resolve(true);
+    const returnsPromise = () => promise;
+    const genFn = function* () {
+      const result = [];
+
+      result.push(yield call(() => 123));
+
+      const callSyncPromise = yield callSync(returnsPromise);
+      result.push(yield callSyncPromise);
+
+      result.push(yield callMethod(object, 'method', 2));
+
+      const callMethodSyncPromise = yield callMethodSync(object, 'returnsPromise');
+      result.push(yield callMethodSyncPromise);
+
+      result.push(yield apply(
+        object,
+        function (y, z) { return this.x + y + z; },
+        [2, 3]
+      ));
+
+      const applySyncPromise = yield applySync(
+        { result: 'result' },
+        function () { return Promise.resolve(this.result); }
+      );
+      result.push(yield applySyncPromise);
+
+      return result;
+    };
+
+    run(genFn).then(result => {
+      expect(result).to.eql([
+        123,
+        true,
+        3,
+        1,
+        6,
+        'result'
+      ]);
+      done();
+    });
+  });
+
+  it('cancels the current step when the cancel method is called', () => {
+    const cancellablePromise = Promise.resolve(true);
+    cancellablePromise.cancel = sinon.spy();
+
+    const genFn = function* () { yield cancellablePromise; };
+
+    run(genFn).cancel();
+    expect(cancellablePromise.cancel.calledOnce).to.be.true;
+  });
+
+  it("doesn't do anything if you call cancel when the proc is already finished executing", (done) => {
+    const proc = run(function* () {});
+    proc.then(result => {
+      proc.cancel();
+      proc.cancel();
+      proc.cancel();
+      proc.cancel();
+      done();
+    });
+  });
+
+  it('works like stopProc if you call cancel multiple times', (done) => {
+    const spy = sinon.spy();
+
+    const genFn = function* () {
+      try {
+        try {
+          spy('try');
+          yield forever();
+          spy('not called');
+        } finally {
+          spy('inner finally');
+          yield forever();
+          spy('not called');
+        }
+      } finally {
+        spy('outer finally');
+        yield forever();
+        spy('not called');
+      }
+    };
+
+    const proc = run(genFn);
+    proc.cancel();
+    proc.cancel();
+    proc.cancel();
+    proc.then(result => {
+      expect(result).to.equal(undefined);
+
+      expect(spy.callCount).to.equal(3);
+      expect(spy.firstCall.args).to.eql(['try']);
+      expect(spy.secondCall.args).to.eql(['inner finally']);
+      expect(spy.thirdCall.args).to.eql(['outer finally']);
+
+      done();
+    });
+  });
+
+  it('cancels all callSync promises when the proc gets cancelled', (done) => {
+    const spy = sinon.spy();
+
+    const childProc = function* () {
+      // Promises callSync-ed by child/grandchild/etc processes should also be cancelled.
+      const promise = yield callSync(forever, () => spy('child'));
+      // The current promise that the child is waiting on should also be cancelled.
+      yield call(forever, () => spy('child waiting'));
+      yield promise;
+      spy('not called');
+    };
+
+    const parentProc = function* () {
+      const child = yield callSync(run, childProc);
+      const promise = yield callSync(forever, () => spy('parent'));
+      yield call(forever, () => spy('parent waiting'));
+      yield Promise.race([child, promise]);
+    };
+
+    const proc = run(parentProc);
+    proc.then(result => {
+      expect(result).to.equal(undefined);
+      expect(spy.callCount).to.equal(4);
+      expect(spy.calledWith('child')).to.be.true;
+      expect(spy.calledWith('child waiting')).to.be.true;
+      expect(spy.calledWith('parent')).to.be.true;
+      expect(spy.calledWith('parent waiting')).to.be.true;
+      done();
+    });
+    setTimeout(() => proc.cancel(), 0);
+  });
+
+  it('cancels all callSync promises when the proc ends normally', (done) => {
+    const spy = sinon.spy();
+
+    const childProc = function* () {
+      // Promises callSync-ed by child/grandchild/etc processes should also be cancelled.
+      const promise = yield callSync(forever, () => spy('child'));
+      // The current promise that the child is waiting on should also be cancelled.
+      yield call(forever, () => spy('child waiting'));
+      yield promise;
+      spy('not called');
+    };
+
+    const parentProc = function* () {
+      const child = yield callSync(run, childProc);
+      const promise = yield callSync(forever, () => spy('parent'));
+      return 'done';
+    };
+
+    const proc = run(parentProc);
+    proc.then(result => {
+      expect(result).to.equal('done');
+      expect(spy.callCount).to.equal(3);
+      expect(spy.calledWith('child')).to.be.true;
+      expect(spy.calledWith('child waiting')).to.be.true;
+      expect(spy.calledWith('parent')).to.be.true;
+      done();
+    });
+  });
+});
+
+// Returns a promise that never resolves or rejects.
+function forever(onCancel) {
+  const promise = new Promise((resolve, reject) => undefined);
+  if (onCancel) {
+    promise.cancel = onCancel;
+  }
+  return promise;
+}
