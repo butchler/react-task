@@ -2,6 +2,18 @@ import React from 'react';
 
 import { runProc } from './proc';
 
+export function task(generatorFunction, staticProperties) {
+  const component = (props) => {
+    return <Task proc={generatorFunction} {...props} />;
+  };
+
+  component.displayName = generatorFunction.name || generatorFunction.displayName;
+
+  Object.assign(component, staticProperties);
+
+  return component;
+}
+
 /**
  * <Task proc={...} ... />
  *
@@ -23,15 +35,16 @@ import { runProc } from './proc';
  * as the second argument to he generator function) to get the current state of
  * the Task's props in the middle of the Task's execution.
  */
-export default class Task extends React.Component {
+export class Task extends React.Component {
   constructor() {
     super();
 
     // Private variables.
-    this._onPropsReceived = null;
-    this._proc = null;
-    this._getProps = this.getProps.bind(this);
-    this._onStep = this.onStep.bind(this);
+    this.onPropsReceived = null;
+    this.proc = null;
+    this.boundGetProps = this.getProps.bind(this);
+    this.boundOnStep = this.onStep.bind(this);
+    this.wasUnmounted = false;
   }
 
   /**
@@ -47,15 +60,15 @@ export default class Task extends React.Component {
         return;
       }
 
-      if (this._onPropsReceived !== null) {
+      if (this.onPropsReceived !== null) {
         throw new Error('Cannot call getProps more than once at a time.');
       }
 
       // Check if the props match the filter whenever they change.
-      this._onPropsReceived = (nextProps) => {
+      this.onPropsReceived = (nextProps) => {
         if (filterFn(nextProps)) {
           resolve(nextProps);
-          this._onPropsReceived = null;
+          this.onPropsReceived = null;
         }
       };
     });
@@ -64,25 +77,21 @@ export default class Task extends React.Component {
   /**
    * Updates the state with the result of the last call for debugging purposes.
    */
-  onStep(step, generator) {
-    // Don't update the state if the proc is not running, because that means
-    // that component has been unmounted. Also, if the generator function gets
-    // changed, don't show steps from the old generator if it's still cleaning
-    // up inside of a finally block.
-    if (this._proc && generator === this._generator) {
+  onStep(step) {
+    // Don't update the state if the component has already been unmounted.
+    if (!this.wasUnmounted) {
       this.setState({ currentStep: step });
     }
   }
 
   start() {
-    this._generator = this.props.proc(this._getProps);
-    this._proc = runProc(this._generator, this._onStep);
+    const generator = this.props.proc(this.boundGetProps);
+    this.proc = runProc(generator, this.boundOnStep);
   }
 
   stop() {
-    if (this._proc) {
-      this._proc.cancel();
-      this._proc = null;
+    if (this.proc) {
+      this.proc.cancel();
     }
   }
 
@@ -100,18 +109,20 @@ export default class Task extends React.Component {
 
   componentWillReceiveProps(nextProps) {
     if (this.props.proc !== nextProps.proc) {
-      // If the proc has changed, stop the old Proc and start a new one.
-      this.stop();
-      this.start();
+      console.warn('Changing the proc property of the Task component will not ' +
+        'cause the process to restart. Use the task() helper function instead of ' +
+        'using the Task component directly, or set a key prop on the Task ' +
+        'component to make it mount a new component when the proc changes.');
     } else {
-      if (this._onPropsReceived !== null) {
-        this._onPropsReceived(nextProps);
+      if (this.onPropsReceived !== null) {
+        this.onPropsReceived(nextProps);
       }
     }
   }
 
   componentWillUnmount() {
     this.stop();
+    this.wasUnmounted = true;
   }
 
   // Task components never render anything by default.

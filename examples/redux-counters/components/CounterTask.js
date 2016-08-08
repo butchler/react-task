@@ -1,8 +1,8 @@
 import React from 'react';
-import { Task, call, callMethod } from 'src';
+import { task, call, callMethod } from 'src';
 import { delay } from 'src/promises';
 
-function* counterTask(getProps) {
+export default task(function* CounterTask(getProps) {
   try {
     const { onCount } = yield call(getProps);
 
@@ -16,8 +16,8 @@ function* counterTask(getProps) {
     yield call(delay, 1000);
     yield callMethod(console, 'log', 'Counter ended.');
   }
-}
-
-export default function CounterTask(props) {
-  return <Task proc={counterTask} {...props} />;
-}
+}, {
+  propTypes: {
+    onCount: React.PropTypes.func.isRequired,
+  },
+});
