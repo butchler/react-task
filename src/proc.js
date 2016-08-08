@@ -1,25 +1,28 @@
 export const
   RESULT_TYPE_NORMAL = 0,
   RESULT_TYPE_ERROR  = 1,
-  RESULT_TYPE_RETURN = 2;
+  RESULT_TYPE_RETURN = 2,
+  RESULT_TYPE_WAIT   = 3,
+  RESULT_TYPE_DONE   = 4;
 
 const CALL = '@@react-task/proc.call';
 
-const INITIAL_STEP_RESULT = { value: undefined, done: false, type: RESULT_TYPE_NORMAL };
+const INITIAL_STEP_RESULT = { value: undefined, type: RESULT_TYPE_NORMAL };
+const STOP_STEP_RESULT = { value: undefined, type: RESULT_TYPE_RETURN };
 
 export function run(generatorFn, ...args) {
   return runProc(generatorFn(...args));
 }
 
-export function runProc(generator, onCall) {
-  let onCancel = null;
+export function runProc(generator, onStep) {
+  let onCancel;
 
   const promise = new Promise((resolve, reject) => {
     let currentStep = null;
-    let returnedPromises = [];
+    let callSyncPromises = [];
 
-    const cancelReturnedPromises = () => {
-      returnedPromises.forEach(promise => {
+    const cancelCallSyncPromises = () => {
+      callSyncPromises.forEach(promise => {
         if (typeof promise.cancel === 'function') {
           promise.cancel();
         }
@@ -29,10 +32,8 @@ export function runProc(generator, onCall) {
     const loopStep = stepResult => {
       if (isPromise(stepResult.value)) {
         // Normally, stepProc waits on the promise if a `call()` returns a
-        // promise. However, stepProc could return a promise if the promise
-        // returned by a function called with `call()` resolves with another
-        // promise, or if someone uses `callSync()` to return a promise without
-        // waiting on it.
+        // promise. However, stepProc can return a promise if the proc yields a
+        // call to callSync with a function that returns a promise.
         //
         // Save all promises returned by either of these methods so that we can
         // call their `cancel` method (if they have one) when the proc ends.
@@ -56,178 +57,184 @@ export function runProc(generator, onCall) {
         // has support for cancellation, such as Bluebird:
         //
         // http://bluebirdjs.com/docs/api/cancellation.html#what-about-promises-that-have-multiple-consumers
-        returnedPromises.push(stepResult.value);
+        callSyncPromises.push(stepResult.value);
       }
 
       // Call stepProc with the previous step's result until the generator is done.
-      if (stepResult.done) {
-        onCancel = null;
-        cancelReturnedPromises();
+      if (stepResult.type === RESULT_TYPE_DONE) {
+        currentStep = null;
+        cancelCallSyncPromises();
         resolve(stepResult.value);
       } else {
-        currentStep = stepProc(generator, stepResult, onCall);
-        currentStep.then(loopStep, reject);
+        currentStep = stepProcSynchronous(generator, stepResult);
 
-        onCancel = () => {
-          currentStep.cancel();
-          currentStep = stopProc(generator);
-          currentStep.then(loopStep, reject);
-        };
+        if (currentStep.type === RESULT_TYPE_WAIT) {
+          currentStep.value.then(loopStep, reject);
+        } else {
+          Promise.resolve(currentStep).then(loopStep);
+        }
+
+        if (onStep) {
+          onStep(currentStep, generator);
+        }
       }
+    };
+
+    onCancel = () => {
+      // Cancel the promise if we're currently waiting on a promise.
+      if (currentStep && currentStep.type === RESULT_TYPE_WAIT) {
+        currentStep.value.cancel();
+      }
+
+      loopStep(STOP_STEP_RESULT);
     };
 
     loopStep(INITIAL_STEP_RESULT);
   });
 
   promise.cancel = () => {
-    if (onCancel) {
-      onCancel();
-    }
+    onCancel();
   };
-
-  promise.getCancel = () => onCancel;
 
   return promise;
 }
 
-export function stepProc(generator, previousResult = INITIAL_STEP_RESULT, onCall) {
-  let waitingPromise = null;
-  let wasCancelled = false;
+export function stepProc(generator, previousResult = INITIAL_STEP_RESULT) {
+  let stepPromise = null;
 
   const promise = new Promise((resolve, reject) => {
-    if (!isGenerator(generator)) {
-      throw new TypeError('First argument to stepProc must be a generator ' +
-        '(not a generator function).');
+    const stepResult = stepProcSynchronous(generator, previousResult);
+
+    if (stepResult.type === RESULT_TYPE_WAIT) {
+      stepPromise = stepResult.value;
+      stepPromise.then(resolve, reject);
+    } else {
+      Promise.resolve(stepResult).then(resolve);
     }
-
-    if (!(previousResult.hasOwnProperty('value') &&
-          typeof previousResult.done === 'boolean' &&
-          (previousResult.type === RESULT_TYPE_NORMAL ||
-           previousResult.type === RESULT_TYPE_ERROR ||
-           previousResult.type === RESULT_TYPE_RETURN))) {
-      throw new TypeError('stepProc got bad previousResult.');
-    }
-
-    // Helper function to resolve/reject with a result object when the given
-    // promise resolves/rejects.
-    //
-    // If the step gets cancelled before the waiting promise resolves or
-    // rejects, then the step will never resolve/reject even if its waiting
-    // promise does.
-    const waitOnPromise = (promise, call) => {
-      waitingPromise = promise;
-
-      promise.then(
-        promiseResult => {
-          if (!wasCancelled) {
-            resolve({
-              value: promiseResult,
-              call,
-              done: false,
-              type: RESULT_TYPE_NORMAL,
-            });
-            waitingPromise = null;
-          }
-        },
-        error => {
-          if (!wasCancelled) {
-            resolve({
-              value: promiseResult,
-              call,
-              done: false,
-              type: RESULT_TYPE_ERROR,
-            });
-            waitingPromise = null;
-          }
-        });
-    };
-
-    // Actually do the step.
-    let generatorResult;
-    switch (previousResult.type) {
-      case RESULT_TYPE_NORMAL:
-        generatorResult = generator.next(previousResult.value);
-        break;
-      case RESULT_TYPE_ERROR:
-        generatorResult = generator.throw(previousResult.value);
-        break;
-      case RESULT_TYPE_RETURN:
-        generatorResult = generator.return(previousResult.value);
-        break;
-    }
-
-    handleGeneratorResult(generatorResult, waitOnPromise, onCall, resolve, reject);
   });
 
   promise.cancel = () => {
-    if (!wasCancelled) {
-      wasCancelled = true;
-
-      if (waitingPromise && typeof waitingPromise.cancel === 'function') {
-        waitingPromise.cancel();
-      }
+    if (stepPromise) {
+      stepPromise.cancel();
     }
   };
 
   return promise;
 }
 
-function handleGeneratorResult(generatorResult, waitOnPromise, onCall, resolve, reject) {
+export function stepProcSynchronous(generator, previousResult = INITIAL_STEP_RESULT) {
+  if (!isGenerator(generator)) {
+    throw new TypeError('First argument to stepProc must be a generator ' +
+      '(not a generator function).');
+  }
+
+  if (!(previousResult.hasOwnProperty('value') &&
+        previousResult.type >= RESULT_TYPE_NORMAL &&
+        previousResult.type <= RESULT_TYPE_DONE)) {
+    throw new TypeError('stepProc got bad previousResult.');
+  }
+
+  let generatorResult;
+
+  switch (previousResult.type) {
+    case RESULT_TYPE_ERROR:
+      generatorResult = generator.throw(previousResult.value);
+      break;
+    case RESULT_TYPE_RETURN:
+      generatorResult = generator.return(previousResult.value);
+      break;
+    default:
+      generatorResult = generator.next(previousResult.value);
+      break;
+  }
+
   if (generatorResult.done) {
     // If the generator is done, finish the step with the final result.
-    resolve({ value: generatorResult.value, done: true, type: RESULT_TYPE_NORMAL });
+    return { value: generatorResult.value, type: RESULT_TYPE_DONE };
   } else if (isPromise(generatorResult.value)) {
     // If the generator yielded a promise, finish the step when the promise resolves.
-    waitOnPromise(generatorResult.value);
+    return { value: stepProcWrapPromise(generatorResult.value), type: RESULT_TYPE_WAIT };
   } else if (isCall(generatorResult.value)) {
     // If the generator yielded a call object, call the function contained in
     // the call object and resolve the result.
     const call = generatorResult.value;
-    let callResult, callError = false;
+    const callInfo = call[CALL];
+    let callResult;
 
     try {
       callResult = executeCall(call);
     } catch (error) {
       // If there was an error while executing the call, send the error to the
       // next step so the generator can handle it.
-      resolve({ value: error, done: false, type: RESULT_TYPE_ERROR });
-      callError = true;
+      return { value: error, call: callInfo, type: RESULT_TYPE_ERROR };
     }
 
-    if (onCall) {
-      onCall(call[CALL], callResult);
-    }
-
-    if (callError) {
-      return;
-    }
-
-    if (isPromise(callResult) && !call[CALL].isSync) {
+    if (isPromise(callResult) && !callInfo.isSync) {
       // If the call returned a promise and it wasn't a synchronous call,
       // finish the step when the promise resolves.
-      waitOnPromise(callResult, call[CALL]);
+      return { value: stepProcWrapPromise(callResult), call: callInfo, type: RESULT_TYPE_WAIT };
     } else {
       // Otherwise, just finish the step immediately with the result of the call.
-      resolve({
-        value: callResult,
-        call: call[CALL],
-        done: false,
-        type: RESULT_TYPE_NORMAL,
-      });
+      return { value: callResult, call: callInfo, type: RESULT_TYPE_NORMAL };
     }
   } else {
     // Throw an error if the generator yields anything else.
-    reject(new Error('Procs should only yield promises or call objects ' +
-      '(returned by call/callSync/apply/applySync).'));
+    throw new Error('Procs should only yield promises or call objects ' +
+      '(returned by call/callSync/apply/applySync).');
   }
-};
+}
 
 export function stopProc(generator) {
   // Tells stepProc to call .return() on the given generator and continue
   // execution from there. A proc might need to continue execution in order to
   // do clean up inside of a finally {} block, so you should continue execution
   // of a proc even aftering calling stopProc() on it.
-  return stepProc(generator, { value: undefined, done: false, type: RESULT_TYPE_RETURN });
+  return stepProc(generator, STOP_STEP_RESULT);
+}
+
+export function stopProcSynchronous(generator) {
+  return stepProcSynchronous(generator, STOP_STEP_RESULT);
+}
+
+/**
+ * Helper function to resolve/reject with a result object when the given
+ * promise resolves/rejects.
+ *
+ * If the step gets cancelled before the waiting promise resolves or
+ * rejects, then the step will never resolve/reject even if its waiting
+ * promise does.
+ */
+function stepProcWrapPromise(promise) {
+  let wasCancelled = false;
+
+  const wrappedPromise = new Promise((resolve, reject) => {
+    promise.then(
+      result => {
+        if (!wasCancelled) {
+          promise = null;
+          resolve({ value: result, type: RESULT_TYPE_NORMAL });
+        }
+      },
+      error => {
+        if (!wasCancelled) {
+          promise = null;
+          reject({ value: error, type: RESULT_TYPE_ERROR });
+        }
+      }
+    );
+  });
+
+  wrappedPromise.cancel = () => {
+    if (!wasCancelled) {
+      wasCancelled = true;
+
+      if (promise && typeof promise.cancel === 'function') {
+        promise.cancel();
+      }
+    }
+  };
+
+  return wrappedPromise;
 }
 
 // Helper functions for creating/working with call objects.

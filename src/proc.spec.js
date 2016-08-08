@@ -14,6 +14,9 @@ import {
   run,
   RESULT_TYPE_NORMAL,
   RESULT_TYPE_ERROR,
+  RESULT_TYPE_RETURN,
+  RESULT_TYPE_WAIT,
+  RESULT_TYPE_DONE
 } from './proc';
 
 describe('isCall', () => {
@@ -193,7 +196,7 @@ describe('stepProc', () => {
     const genFn = function* () { return 123; };
 
     stepProc(genFn()).then(result => {
-      expect(result).to.contain.keys({ value: 123, done: true });
+      expect(result).to.contain.keys({ value: 123, type: RESULT_TYPE_DONE });
       done();
     });
   });
@@ -204,9 +207,9 @@ describe('stepProc', () => {
     const gen = genFn();
 
     stepProc(gen).then(result => {
-      expect(result).to.contain.keys({ value: 3, done: false });
+      expect(result.value).to.equal(3);
       stepProc(gen, result).then(result => {
-        expect(result).to.contain.keys({ value: undefined, done: true });
+        expect(result.type).to.equal(RESULT_TYPE_DONE);
         done();
       });
     });
@@ -228,7 +231,7 @@ describe('stepProc', () => {
       resolvePromise();
       setTimeout(() => {
         expect(spy.callCount).to.equal(1);
-        expect(spy.firstCall.args[0]).to.contain.keys({ value: 123, done: false });
+        expect(spy.firstCall.args[0].value).to.equal(123);
         done();
       }, 0);
     }, 0);
@@ -252,7 +255,7 @@ describe('stepProc', () => {
       resolvePromise();
       setTimeout(() => {
         expect(spy.callCount).to.equal(1);
-        expect(spy.firstCall.args[0]).to.contain.keys({ value: 123, done: false });
+        expect(spy.firstCall.args[0].value).to.equal(123);
         done();
       }, 0);
     }, 0);
@@ -268,7 +271,7 @@ describe('stepProc', () => {
     const gen = genFn();
 
     stepProc(gen).then(result => {
-      expect(result).to.contain.keys({ value: promise, done: false });
+      expect(result.value).to.equal(promise);
       done();
     });
   });
@@ -318,7 +321,7 @@ describe('stepProc', () => {
     const gen = genFn();
 
     stepProc(gen).then(result => {
-      expect(result).to.contain.keys({ value: 'error', done: false, type: RESULT_TYPE_ERROR });
+      expect(result).to.contain.keys({ value: 'error', type: RESULT_TYPE_ERROR });
       done();
     });
   });
@@ -348,7 +351,7 @@ describe('stepProc', () => {
 
     const step = stepProc(gen);
     step.then(result => {
-      expect(result).to.contain.keys({ value: 'finally', done: true });
+      expect(result).to.contain.keys({ value: 'finally', type: RESULT_TYPE_DONE });
       done();
     });
     step.cancel();
@@ -417,17 +420,14 @@ describe('stopProc', () => {
 
     let step = stepProc(gen);
     step.then(result => {
-      expect(result.done).to.be.false;
       expect(spy.firstCall.args).to.eql(['try']);
 
       step = stopProc(gen);
       step.then(result => {
-        expect(result.done).to.be.false;
         expect(spy.secondCall.args).to.eql(['inner finally']);
 
         step = stopProc(gen);
         step.then(result => {
-          expect(result.done).to.be.false;
           expect(spy.thirdCall.args).to.eql(['outer finally']);
 
           done();
@@ -443,12 +443,12 @@ describe('stopProc', () => {
 
     let step = stepProc(gen);
     step.then(result => {
-      expect(result.done).to.be.true;
+      expect(result.type).to.equal(RESULT_TYPE_DONE);
       expect(spy.calledOnce).to.be.true;
 
       step = stopProc(gen);
       step.then(result => {
-        expect(result.done).to.be.true;
+        expect(result.type).to.equal(RESULT_TYPE_DONE);
         expect(spy.calledOnce).to.be.true;
 
         done();

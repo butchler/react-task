@@ -31,7 +31,7 @@ export default class Task extends React.Component {
     this._onPropsReceived = null;
     this._proc = null;
     this._getProps = this.getProps.bind(this);
-    this._onCall = this.onCall.bind(this);
+    this._onStep = this.onStep.bind(this);
   }
 
   /**
@@ -64,16 +64,19 @@ export default class Task extends React.Component {
   /**
    * Updates the state with the result of the last call for debugging purposes.
    */
-  onCall(call, callResult) {
-    // Don't update the state if the proc is not running, because that means that component has been
-    // unmounted.
-    if (this._proc) {
-      this.setState({ lastCall: call, lastCallResult: callResult });
+  onStep(step, generator) {
+    // Don't update the state if the proc is not running, because that means
+    // that component has been unmounted. Also, if the generator function gets
+    // changed, don't show steps from the old generator if it's still cleaning
+    // up inside of a finally block.
+    if (this._proc && generator === this._generator) {
+      this.setState({ currentStep: step });
     }
   }
 
   start() {
-    this._proc = runProc(this.props.proc(this._getProps), this._onCall);
+    this._generator = this.props.proc(this._getProps);
+    this._proc = runProc(this._generator, this._onStep);
   }
 
   stop() {
