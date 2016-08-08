@@ -75,7 +75,7 @@ export function runProc(generator, onStep) {
         }
 
         if (onStep) {
-          onStep(currentStep, generator);
+          onStep(currentStep);
         }
       }
     };
