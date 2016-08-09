@@ -14,9 +14,6 @@ const state = { counters: [] };
 const appContainer = document.getElementById('app-container');
 const taskContainer = document.createElement('div');
 
-render();
-tests();
-
 function render() {
   ReactDOM.render(<App state={state} />, appContainer);
 
@@ -186,3 +183,6 @@ function assert(value) {
     throw new Error('Assertion failed');
   }
 }
+
+render();
+tests();
