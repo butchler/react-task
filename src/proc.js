@@ -1,3 +1,5 @@
+import Promise from 'promise';
+
 export const
   RESULT_TYPE_NORMAL = 0,
   RESULT_TYPE_ERROR  = 1,
@@ -66,7 +68,11 @@ export function runProc(generator, onStep) {
         cancelCallSyncPromises();
         resolve(stepResult.value);
       } else {
-        currentStep = stepProcSynchronous(generator, stepResult);
+        try {
+          currentStep = stepProcSynchronous(generator, stepResult);
+        } catch (error) {
+          reject(error);
+        }
 
         if (currentStep.type === RESULT_TYPE_WAIT) {
           currentStep.value.then(loopStep, reject);

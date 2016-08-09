@@ -1,6 +1,8 @@
 // Needed to be able to use generator functions.
 import 'babel-polyfill';
 
+import PromiseLibPromise from 'promise';
+
 import {
   isCall,
   isPromise,
@@ -64,7 +66,9 @@ describe('isPromise', () => {
     expect(isPromise(new Promise((resolve, reject) => undefined))).to.be.true;
   });
 
-  // TODO: Make sure it works with a Promise library other than babel-polyfill's.
+  it('works with promise library promises', () => {
+    expect(isPromise(new PromiseLibPromise((resolve, reject) => undefined))).to.be.true;
+  });
 
   it('works with plain object style Promises', () => {
     expect(isPromise({ then: x => x })).to.be.true;
@@ -127,7 +131,6 @@ describe('executeCall', () => {
     expect(executeCall(applySync(context, fn3, [2]))).to.be.three;
   });
 
-  // TODO: Find out why this doesn't work.
   it('throws for anything other than a call object', () => {
     expect(() => executeCall()).to.throw(TypeError);
     expect(() => executeCall({})).to.throw(TypeError);
@@ -233,7 +236,7 @@ describe('stepProc', () => {
         expect(spy.callCount).to.equal(1);
         expect(spy.firstCall.args[0].value).to.equal(123);
         done();
-      }, 0);
+      }, 10);
     }, 0);
   });
 
@@ -257,7 +260,7 @@ describe('stepProc', () => {
         expect(spy.callCount).to.equal(1);
         expect(spy.firstCall.args[0].value).to.equal(123);
         done();
-      }, 0);
+      }, 10);
     }, 0);
   });
 

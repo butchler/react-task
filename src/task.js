@@ -1,4 +1,5 @@
 import React from 'react';
+import Promise from 'promise';
 import { runProc } from './proc';
 
 /**
@@ -90,6 +91,8 @@ export class Task extends React.Component {
   start() {
     const generator = this.props.proc(this.boundGetProps);
     this.proc = runProc(generator, this.boundOnStep);
+    // Ensure that uncaught rejections get logged as errors.
+    this.proc.done();
   }
 
   stop() {

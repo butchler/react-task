@@ -1,3 +1,5 @@
+import Promise from 'promise';
+
 /**
  * Returns a promise that resolves after the given number of milliseconds.
  */
