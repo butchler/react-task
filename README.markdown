@@ -30,7 +30,7 @@ Ultimately, however, React is a UI rendering library, so it is possible that it 
 
 ## API Reference
 
-### `task(function* (getProps) { ... })` => React stateless component
+### `task(function* (getProps) { ... })` => Stateless React component
 
 Takes a generator function and returns a stateless React component that will start the process described by the generator function when the component is mounted and stop it when the component is unmounted.
 
@@ -110,7 +110,7 @@ export default class AnimationComponent extends Component {
 }
 ```
 
-### `call(sideEffectFunction, ...args)` => call object
+### `call(sideEffectFunction, ...args)` => 'call' object
 
 Call takes a function and a list of arguments for the function and returns an object that can be used to actually execute the function call later. It is analogous to redux-saga's declarative effects.
 
@@ -122,11 +122,11 @@ If the result of the function call is a promise, the process runner will wait un
 
 Similar to `call`, but allows you to set the value of `this` within the function call, and let's you specify the arguments as an array.
 
-### `callMethod(object, methodName, ...arts)` => call object
+### `callMethod(object, methodName, ...arts)` => 'call' object
 
 Convenience function that is equivalent to `apply(object, object[methodName], args)`.
 
-### `callSync/applySync/callMethodSync` => call object
+### `callSync/applySync/callMethodSync` => 'call' object
 
 The synchronous version of each of the call creator functions has the same signature as the asynchronous version. However, if the result of the function call is a promise, it will just return the value of the promise and continue execution instead of waiting for the promise to resolve/reject.
 
@@ -134,7 +134,7 @@ You can save a reference to the returned promise and yield it later in the gener
 
 If the returned promise has a `cancel` method, it will be called when the task's process ends or is cancelled.
 
-### `run(generatorFunction, ...args)`
+### `run(generatorFunction, ...args)` => Promise
 
 This is the public API for the process runner that backs task components. It takes a generator function that yields calls to `call`/`apply`/etc and a list of arguments for the generator function, and returns a promise that resolves with the final return value of the generator function (or rejects if there is an error during the execution of the function).
 
