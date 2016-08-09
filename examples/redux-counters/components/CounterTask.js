@@ -23,3 +23,5 @@ CounterTask.displayName = 'CounterTask';
 CounterTask.propTypes = {
   onCount: React.PropTypes.func.isRequired,
 };
+
+export default CounterTask;
