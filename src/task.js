@@ -1,15 +1,18 @@
 import React from 'react';
-
 import { runProc } from './proc';
 
-export function task(generatorFunction, staticProperties) {
-  const component = (props) => {
+/**
+ * A helper function to create a stateless React component that renders a Task
+ * component with the given generator function.
+ */
+export function task(generatorFunction) {
+  const component = props => {
     return <Task proc={generatorFunction} {...props} />;
   };
 
+  // If the function is named, use its name as the component's displayName for
+  // debugging purposes.
   component.displayName = generatorFunction.name || generatorFunction.displayName;
-
-  Object.assign(component, staticProperties);
 
   return component;
 }

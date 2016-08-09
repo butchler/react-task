@@ -1,4 +1,3 @@
-import Task from './task';
 import { apply, applySync, isPromise } from './proc';
 // TODO: Allow using the deepEqual function from the testing framework.
 import deepEqual from 'deep-equal';
