@@ -6,7 +6,7 @@ import ReactDOMServer from 'react-dom/server';
 import ReactTestUtils from 'react-addons-test-utils';
 import deepEqual from 'deep-equal';
 
-import { Task, call, callSync, callMethod } from 'src';
+import { task, call, callSync, callMethod } from 'src';
 import { delay } from 'src/promises';
 import TaskTester from 'src/test';
 
@@ -74,6 +74,10 @@ function* counterTask(getProps) {
   }
 }
 
+// Creates a stateless React component that just renders the Task component with
+// the given generator function.
+const CounterTask = task(counterTask);
+
 function *counterTaskSync(getProps) {
   const { id } = yield call(getProps);
 
@@ -87,11 +91,6 @@ function *counterTaskSync(getProps) {
     yield promise;
     yield call(incrementCounter, id);
   }
-}
-
-// If you want you can make a helper stateless component to render the task.
-function CounterTask({ id }) {
-  return <Task proc={counterTask} id={id} />;
 }
 
 function addCounter() {
