@@ -13,7 +13,8 @@ export function task(generatorFunction) {
 
   // If the function is named, use its name as the component's displayName for
   // debugging purposes.
-  component.displayName = generatorFunction.name || generatorFunction.displayName;
+  const procName = generatorFunction.name || generatorFunction.displayName;
+  component.displayName = `task(${procName})`;
 
   return component;
 }
