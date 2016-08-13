@@ -2,7 +2,7 @@ import React from 'react';
 import { task, call, callMethod } from 'src';
 import { delay } from 'src/promises';
 
-const CounterTask = task(function* (getProps) {
+export function* counterProc(getProps) {
   try {
     const { onCount } = yield call(getProps);
 
@@ -16,12 +16,16 @@ const CounterTask = task(function* (getProps) {
     yield call(delay, 1000);
     yield callMethod(console, 'log', 'Counter ended.');
   }
-});
+}
 
-CounterTask.displayName = 'CounterTask';
-
-CounterTask.propTypes = {
-  onCount: React.PropTypes.func.isRequired,
-};
-
-export default CounterTask;
+export default Object.assign(
+  task(counterProc),
+  // The task() function returns a React component, which we can then assign a
+  // custom displayName and propTypes to if we want.
+  {
+    displayName: 'CounterTask',
+    propTypes: {
+      onCount: React.PropTypes.func.isRequired,
+    },
+  }
+);
