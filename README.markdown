@@ -13,20 +13,33 @@ For example, instead of saying "start a loading process when a `LOAD_ITEM` actio
 
 ## Tasks as Components
 
-In order to implement state-based side effects, I originally started writing a diffing algorithm, where after each state update you would generate a list of "tasks" based on your state, representing background processes that perform side effects, and the algorithm would start any tasks that weren't in the previous list of tasks and stop any tasks no longer in the list.
+react-task actually uses React components to represent the side effect
+processes that should currently be running. Task components basically
+just do two things:
 
-Then I decided that it should be possible to organize tasks into a logical hierarchy in order to make testing easier.
+1. When the component is mounted, it starts a background process that
+   runs the generator function you give it. When the component gets
+   unmounted/stops being rendered, it stops the background process if it
+   hasn't ended already.
+2. Passes a `getProps` function as an argument to the generator function
+   that it can call to get the current state of the props.
 
-Then I realized that this was very similar to React's virtual DOM reconciliation, and that I could even implement it using React components. This seemed really strange at first, but actually has several advantages:
+It may seem really strange to use React components to represent
+processes, but this actually has several advantages:
 
-1. Reuses React's existing reconciliation algorithm.
+1. Reuses React's existing reconciliation algorithm instead of making a
+   custom algorithm for starting/stopping of processes.
 2. Let's you organize your side effect tasks in a hierarchy of reusable components.
 3. Because they're just regular React components, you can use react-redux's `connect` to connect your side effects to your Redux state just like with UI components. This allows the side effect handling code to be very reusable.
 4. As React components, tasks can also be inspected using React's existing devtools to see what side effect processes are currently running. As an additional debugging tool, the Task component stores information about the current "step" in the execution of the background process to the component's state, and it could probably be extended to add more debugging info.
 5. Tasks can be tested using React component testing tools like shallow rendering, to test that the correct tasks are run for a given state.
 6. You can add propTypes to your task components.
+7. You can render tasks inside of your UI components if there are side
+   effects that should be tied to a particular UI component, or render them
+   completely separately from your UI, whichever way is more appropriate
+   for your use case.
 
-Ultimately, however, React is a UI rendering library, so it is possible that it could add UI-specific optimizations in the future that would break use cases like this. However, I think the risk of this happening is currently outweighed by the above benefits, which is why react-task uses React components to represent the tasks that should currently be running.
+Ultimately, however, React is a UI rendering library, so it is possible that it could add UI-specific optimizations in the future that would break use cases like this. However, I think the risk of this happening is currently outweighed by the above benefits.
 
 ## API Reference
 

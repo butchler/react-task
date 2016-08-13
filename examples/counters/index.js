@@ -12,49 +12,58 @@ import TaskTester from 'src/test';
 
 const state = { counters: [] };
 const appContainer = document.getElementById('app-container');
-const taskContainer = document.createElement('div');
 
 function render() {
   ReactDOM.render(<App state={state} />, appContainer);
-
-  // Render the tasks in an unattached element so that they don't modify the visible DOM.
-  ReactDOM.render(<AppTasks state={state} />, taskContainer);
 }
 
 function App({ state }) {
   const counterList = state.counters.map((counter, index) => {
-    return <li key={index}>Counter {index}: {counter.count} <button onClick={() => removeCounter(index)}>Remove</button></li>;
+    return (
+      <li key={index}>
+        Counter {index}: {counter.count} <button onClick={() => removeCounter(index)}>Remove</button>
+
+        {/**
+          * NOTE: In this example, the Task component is rendered alongside the UI components. In
+          * the redux-counters example, the Tasks and UI are rendered completely independently.
+          *
+          * In many cases, it's nice to keep the UI rendering and Task rendering separate, so that
+          * the UI code doesn't have to be concerened with side effects.
+          *
+          * In some cases it might make sense for the Tasks to be tied to a particular UI component.
+          * For example, on one page you might have the same form in two different locations on the
+          * page, but on another page you might have only one form or no form. How many copies of
+          * the form are currently being rendered is probably difficult to determine from the state
+          * alone. However, if you want each copy of the form to handle the side effects related to
+          * submitting the form independently, you should probably have the Task components rendered
+          * inside of the form UI component.
+          *
+          * Another case where it might be a good idea to couple the UI and side effects is UI
+          * animations, because the Task that handles the animation sequence might need to depend on
+          * one of the UI component's onTransitionEnd callbacks, for example. However, you might
+          * also decide that it makes more sense to keep the animation sequence decoupled from the
+          * UI, because the same animation sequence could potentially be used to manage the
+          * animation of several completely separate parts of the UI.
+          *
+          * It's up to you to decide which approach is more appropriate for each Task: whether the
+          * Task should be tied to a particular component in the UI, or tied to a particular piece
+          * of your app's state.
+          */}
+        <CounterTask id={index} />
+      </li>
+    );
   });
 
-  return <div>
-  <p><button onClick={addCounter}>Add Counter</button></p>
+  return (
+    <div>
+      <p><button onClick={addCounter}>Add Counter</button></p>
 
-  <ul>{counterList}</ul>
-
-  {/*
-    * NOTE: You could just render your tasks alongside regular components like this:
-    *
-
-    <AppTasks state={state} />
-
-    *
-    * But it's probably a bad idea, because then you won't be able to render
-    * on the client without causing side effects.
-    *
-    * Instead it's probably better to render all of your tasks separately
-    * from your UI, like in render() above.
-    *
-    */}
-  </div>;
+      <ul>{counterList}</ul>
+    </div>
+  );
 }
 
-function AppTasks({ state }) {
-  const counterTasks = state.counters.map((counter, index) => <CounterTask key={index} id={index} />);
-
-  return <div>{counterTasks}</div>;
-}
-
-function* counterTask(getProps) {
+function* counterProc(getProps) {
   try {
     const { id } = yield call(getProps);
 
@@ -73,9 +82,9 @@ function* counterTask(getProps) {
 
 // Creates a stateless React component that just renders the Task component with
 // the given generator function.
-const CounterTask = task(counterTask);
+const CounterTask = task(counterProc);
 
-function *counterTaskSync(getProps) {
+function *counterProcSync(getProps) {
   const { id } = yield call(getProps);
 
   while (true) {
@@ -124,7 +133,7 @@ function tests() {
   // We can just pass a fake getProps function in since we'll fake its results
   // using Generator.next() anyway.
   const getProps = () => undefined;
-  const gen = counterTask(getProps);
+  const gen = counterProc(getProps);
   // Get the first call object, which should be a call to getProps.
   assert(deepEqual(gen.next().value, call(getProps)));
   // Pass the initial props to the generator and skip the first iteration of
@@ -138,7 +147,7 @@ function tests() {
   }
 
   // The same test using a helper for testing tasks:
-  const task = new TaskTester(counterTask);
+  const task = new TaskTester(counterProc);
 
   task.calls(task.getProps).returns({ id: 123 });
 
@@ -146,8 +155,8 @@ function tests() {
     task.calls(delay, 1000).calls(incrementCounter, 123);
   }
 
-  // Another test for counterTaskSync:
-  const taskSync = new TaskTester(counterTaskSync);
+  // Another test for counterProcSync:
+  const taskSync = new TaskTester(counterProcSync);
 
   taskSync.calls(taskSync.getProps).returns({ id: 123 });
 
@@ -172,10 +181,15 @@ function tests() {
   // state, you can just use shallow rendering to make sure the correct Task
   // components are being rendered:
   const renderer = ReactTestUtils.createRenderer();
-  renderer.render(<AppTasks state={{ counters: [{ count: 123 }] }} />);
-  const tasks = renderer.getRenderOutput().props.children;
+  renderer.render(<App state={{ counters: [{ count: 123 }] }} />);
+  // NOTE: Testing is one reason that it's nice to keep the Task rendering separate from the UI
+  // rendering: you don't have to filter through the UI components to look for the Task components.
+  // On the other hand, you should probably use a library like enzyme to help out with this kind of
+  // thing, anyway.
+  const ul = renderer.getRenderOutput().props.children[1];
+  const tasks = ul.props.children.map(li => li.props.children.find(element => element.type === CounterTask));
 
-  assert(deepEqual(tasks, [<CounterTask key={0} id={0} />]));
+  assert(deepEqual(tasks, [<CounterTask id={0} />]));
 }
 
 function assert(value) {
