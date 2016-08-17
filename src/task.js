@@ -58,7 +58,7 @@ export class Task extends React.Component {
    * function is provided.
    */
   getProps(filterFn = (() => true)) {
-    return new Promise((resolve, reject) => {
+    const promise = new Promise((resolve, reject) => {
       // Check and resolve immediately if the props already match the filter.
       if (filterFn(this.props)) {
         resolve(this.props);
@@ -77,6 +77,12 @@ export class Task extends React.Component {
         }
       };
     });
+
+    promise.cancel = () => {
+      this.onPropsReceived = null;
+    };
+
+    return promise;
   }
 
   /**
