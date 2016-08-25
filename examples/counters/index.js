@@ -25,29 +25,8 @@ function App({ state }) {
 
         {/**
           * NOTE: In this example, the Task component is rendered alongside the UI components. In
-          * the redux-counters example, the Tasks and UI are rendered completely independently.
-          *
-          * In many cases, it's nice to keep the UI rendering and Task rendering separate, so that
-          * the UI code doesn't have to be concerened with side effects.
-          *
-          * In some cases it might make sense for the Tasks to be tied to a particular UI component.
-          * For example, on one page you might have the same form in two different locations on the
-          * page, but on another page you might have only one form or no form. How many copies of
-          * the form are currently being rendered is probably difficult to determine from the state
-          * alone. However, if you want each copy of the form to handle the side effects related to
-          * submitting the form independently, you should probably have the Task components rendered
-          * inside of the form UI component.
-          *
-          * Another case where it might be a good idea to couple the UI and side effects is UI
-          * animations, because the Task that handles the animation sequence might need to depend on
-          * one of the UI component's onTransitionEnd callbacks, for example. However, you might
-          * also decide that it makes more sense to keep the animation sequence decoupled from the
-          * UI, because the same animation sequence could potentially be used to manage the
-          * animation of several completely separate parts of the UI.
-          *
-          * It's up to you to decide which approach is more appropriate for each Task: whether the
-          * Task should be tied to a particular component in the UI, or tied to a particular piece
-          * of your app's state.
+          * the redux-counters example, the Tasks and UI are rendered completely independently. You
+          * are free to organize the tasks how you want.
           */}
         <CounterTask id={index} />
       </li>
