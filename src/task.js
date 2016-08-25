@@ -7,14 +7,14 @@ import { runProc } from './proc';
  * component with the given generator function.
  */
 export function task(generatorFunction) {
+  // If the function is named, use its name as the component's displayName and key.
+  const name = `task(${generatorFunction.name || generatorFunction.displayName})`;
+
   const component = props => {
-    return <Task proc={generatorFunction} {...props} />;
+    return <Task key={name} proc={generatorFunction} {...props} />;
   };
 
-  // If the function is named, use its name as the component's displayName for
-  // debugging purposes.
-  const procName = generatorFunction.name || generatorFunction.displayName;
-  component.displayName = `task(${procName})`;
+  component.displayName = name;
 
   return component;
 }
