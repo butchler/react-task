@@ -665,7 +665,7 @@ function forever(onCancel) {
   return promise;
 }
 
-import { runSync, runAsync, proc } from './proc';
+import { runSync, runAsync, proc, runProcSync } from './proc';
 
 describe.only('runSync', () => {
   it('returns yielded results to generator', () => {
@@ -676,7 +676,7 @@ describe.only('runSync', () => {
       spy(yield 'test');
     };
 
-    runSync(proc(simpleProc()));
+    runSync(simpleProc);
 
     expect(spy.calledWith(1)).to.be.true;
     expect(spy.calledWith('test')).to.be.true;
@@ -690,7 +690,7 @@ describe.only('runSync', () => {
       spy(yield call(x => x + 1, 1));
     };
 
-    runSync(proc(simpleProc()));
+    runSync(simpleProc);
 
     expect(spy.calledWith(1)).to.be.true;
     expect(spy.calledWith(2)).to.be.true;
@@ -707,7 +707,7 @@ describe.only('runSync', () => {
       spy(yield call(x => x + 1, 1));
     };
 
-    runSync(proc(simpleProc(), exec));
+    runProcSync(proc(simpleProc(), exec));
 
     expect(spy.calledWith('not 1')).to.be.true;
     expect(spy.calledWith('not 2')).to.be.true;
@@ -723,7 +723,7 @@ describe.only('runAsync', () => {
       spy(yield 'test');
     };
 
-    runAsync(proc(simpleProc())).then(result => {
+    runAsync(simpleProc).then(result => {
       expect(spy.calledWith(1)).to.be.true;
       expect(spy.calledWith('test')).to.be.true;
       done();
@@ -738,7 +738,7 @@ describe.only('runAsync', () => {
       spy(yield new Promise((resolve, reject) => setTimeout(() => resolve('test'), 100)));
     };
 
-    runAsync(proc(simpleProc())).then(result => {
+    runAsync(simpleProc).then(result => {
       expect(spy.calledWith(1)).to.be.true;
       expect(spy.calledWith('test')).to.be.true;
       done();
@@ -758,10 +758,40 @@ describe.only('runAsync', () => {
       spy(yield call(delay, 100));
     };
 
-    runAsync(proc(simpleProc())).then(result => {
+    runAsync(simpleProc).then(result => {
       expect(spy.calledWith(1)).to.be.true;
       expect(spy.calledWith('done')).to.be.true;
       done();
     });
+  });
+
+  it('can be cancelled', (done) => {
+    const spy = sinon.spy();
+    const onDone = sinon.spy();
+    const delay = ms => {
+      return new Promise((resolve, reject) => {
+        setTimeout(() => resolve('done'), ms);
+      });
+    };
+
+    const simpleProc = function* () {
+      spy(yield 1);
+      spy(yield call(delay, 100));
+    };
+
+    const promise = runAsync(simpleProc);
+
+    promise.then(onDone, onDone);
+
+    setTimeout(promise.cancel, 10);
+
+    setTimeout(() => {
+      expect(spy.calledWith(1)).to.be.true;
+      expect(spy.calledWith('done')).to.be.false;
+      // The promise returned by runAsync will not resolve or reject if cancel it before it
+      // finishes.
+      expect(onDone.called).to.be.false;
+      done();
+    }, 200);
   });
 });
