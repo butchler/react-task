@@ -665,7 +665,7 @@ function forever(onCancel) {
   return promise;
 }
 
-import { runSync, runAsync, proc, runProcSync } from './proc';
+import { runSync, runAsync, mockCalls } from './proc';
 
 describe.only('runSync', () => {
   it('returns yielded results to generator', () => {
@@ -694,23 +694,6 @@ describe.only('runSync', () => {
 
     expect(spy.calledWith(1)).to.be.true;
     expect(spy.calledWith(2)).to.be.true;
-  });
-
-  it('lets you use custom call handler', () => {
-    const spy = sinon.spy();
-    const exec = sinon.stub();
-    exec.onFirstCall().returns({ result: 'not 1', type: RESULT_TYPE_NORMAL });
-    exec.onSecondCall().returns({ result: 'not 2', type: RESULT_TYPE_NORMAL });
-
-    const simpleProc = function* () {
-      spy(yield call(() => 1));
-      spy(yield call(x => x + 1, 1));
-    };
-
-    runProcSync(proc(simpleProc(), exec));
-
-    expect(spy.calledWith('not 1')).to.be.true;
-    expect(spy.calledWith('not 2')).to.be.true;
   });
 });
 
@@ -788,5 +771,19 @@ describe.only('runAsync', () => {
       expect(spy.calledWith('done')).to.be.false;
       done();
     });
+  });
+});
+
+describe.only('mockCalls', () => {
+  it('mocks calls', () => {
+    const onePlusOne = () => 2;
+
+    const simpleProc = function* () {
+      return yield call(onePlusOne);
+    };
+
+    const proc = mockCalls(simpleProc, [[onePlusOne, () => 3]]);
+
+    expect(runSync(proc)).to.equal(3);
   });
 });

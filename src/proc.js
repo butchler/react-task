@@ -11,11 +11,11 @@ const INITIAL_RESULT = { result: undefined, type: RESULT_TYPE_NORMAL };
 
 // Functions for running procs.
 export function runSync(procGeneratorFunction, ...args) {
-  return runProcSync(proc(procGeneratorFunction(...args)));
+  return runProcSync(createProc(procGeneratorFunction(...args)));
 }
 
 export function runAsync(procGeneratorFunction, ...args) {
-  return runProcAsync(proc(procGeneratorFunction(...args)));
+  return runProcAsync(createProc(procGeneratorFunction(...args)));
 }
 
 export function runProcSync(procGenerator, initialResult = INITIAL_RESULT) {
@@ -57,8 +57,6 @@ export function runProcAsync(procGenerator, initialResult = INITIAL_RESULT) {
 
   const procPromise = new Promise((resolve, reject) => {
     loop = ({ result, type }) => {
-      console.log('loop', { result, type });
-
       // Make sure any promises we might have been waiting on are cleaned up.
       if (currentPromise) {
         currentPromise.cancel();
@@ -113,43 +111,80 @@ export function runProcAsync(procGenerator, initialResult = INITIAL_RESULT) {
 }
 
 // Function to create procs.
-export function proc(generatorFunction, handleCall = defaultHandleCall) {
+export function createProc(generator) {
+  return createMappedGenerator(mapProcValues, generator);
+}
+
+export function mockCalls(procGeneratorFunction, callMappings) {
+  // TODO: Throw an error if callMappings isn't an array of arrays.
+  return (...args) => {
+    const generator = procGeneratorFunction(...args);
+    const mapValues = value => mapCalls(callMappings, value);
+    return createMappedGenerator(mapValues, generator);
+  };
+}
+
+export function createMappedGenerator(mapValue, generator) {
   return {
-    next(result) {
-      return wrapProcValue(generatorFunction.next(result), handleCall);
+    next(yieldValue) {
+      const { value, done } = generator.next(yieldValue);
+      return { value: mapValue(value), done };
     },
-    throw(result) {
-      return wrapProcValue(generatorFunction.throw(result), handleCall);
+    return(yieldValue) {
+      const { value, done } = generator.return(yieldValue);
+      return { value: mapValue(value), done };
     },
-    return(result) {
-      return wrapProcValue(generatorFunction.return(result), handleCall);
+    throw(yieldError) {
+      const { value, done } = generator.throw(yieldError);
+      return { value: mapValue(value), done };
     },
   };
 }
 
-function wrapProcValue({ value, done }, handleCall) {
-  return {
-    value: isCall(value) ? handleCall(value) : {
+function mapProcValues(value) {
+  if (isCall(value)) {
+    // Execute calls and return their result or error.
+    try {
+      const result = executeCall(value);
+
+      return {
+        result,
+        type: RESULT_TYPE_NORMAL,
+      };
+    } catch (error) {
+      return {
+        result: error,
+        type: RESULT_TYPE_ERROR,
+      };
+    }
+  } else {
+    return {
       result: value,
       type: RESULT_TYPE_NORMAL,
-    },
-    done,
-  };
+    };
+  }
 }
 
-export function defaultHandleCall(call) {
-  try {
-    const result = executeCall(call);
+function mapCalls(callMappings, value) {
+  if (isCall(value)) {
+    // Search for the function in the list of call mappings.
+    const { context, fn, args } = getCallInfo(value);
 
-    return {
-      result,
-      type: RESULT_TYPE_NORMAL,
-    };
-  } catch (error) {
-    return {
-      result: error,
-      type: RESULT_TYPE_ERROR,
-    };
+    for (let i = 0; i < callMappings.length; i++) {
+      const [originalFn, mockFn] = callMappings[i];
+
+      if (
+        fn === originalFn ||
+        (typeof originalFn === 'string' && (fn.name || fn.displayName) === originalFn)
+      ) {
+        return createCall(context, mockFn, args);
+      }
+    }
+
+    // If we couldn't find any mappings for the function, just return the original call.
+    return value;
+  } else {
+    return value;
   }
 }
 
