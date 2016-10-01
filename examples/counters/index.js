@@ -6,6 +6,7 @@ import deepEqual from 'deep-equal';
 
 import { task, call, callMethod } from 'src';
 import { delay } from 'src/promises';
+import { mockCalls, runSync, PROC_RETURN } from 'src/proc';
 
 const state = { counters: [] };
 const appContainer = document.getElementById('app-container');
@@ -96,6 +97,20 @@ function tests() {
     assert(deepEqual(gen.next().value, call(delay, 1000)));
     assert(deepEqual(gen.next().value, call(incrementCounter, 123)));
   }
+
+  // Rather than testing the generator directly, a better way to test procs is to use the
+  // mockCalls() helper in react-task/proc to mock the functions that can cause side effects:
+  let returned = false;
+  const mockedProc = mockCalls(counterProc, {
+    delay: () => 'do nothing',
+    // Returning the value PROC_RETURN will cause the proc to return.
+    incrementCounter: index => index === 123 && PROC_RETURN,
+    log: () => returned = true,
+  });
+
+  runSync(mockedProc, getProps);
+
+  assert(returned);
 }
 
 function assert(value) {

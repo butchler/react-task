@@ -6,6 +6,9 @@ export const RESULT_TYPE_ERROR  = 'error';
 export const RESULT_TYPE_RETURN = 'return';
 export const RESULT_TYPE_STOP   = 'stop';
 
+export const PROC_STOP = {};
+export const PROC_RETURN = {};
+
 const CALL = '@@react-task/proc.call';
 
 const INITIAL_RESULT = { result: undefined, type: RESULT_TYPE_NORMAL };
@@ -173,16 +176,29 @@ function mapProcValues(value) {
     try {
       const result = executeCall(value);
 
-      return {
-        result,
-        type: RESULT_TYPE_NORMAL,
-      };
+      return createNormalResult(result);
     } catch (error) {
       return {
         result: error,
         type: RESULT_TYPE_ERROR,
       };
     }
+  } else {
+    return createNormalResult(value);
+  }
+}
+
+function createNormalResult(value) {
+  if (value === PROC_STOP) {
+    return {
+      result: undefined,
+      type: RESULT_TYPE_STOP,
+    };
+  } else if (value === PROC_RETURN) {
+    return {
+      result: undefined,
+      type: RESULT_TYPE_RETURN,
+    };
   } else {
     return {
       result: value,
