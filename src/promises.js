@@ -7,7 +7,7 @@ export function delay(timeoutMilliseconds) {
   let timeoutId;
 
   const promise = new Promise((resolve, reject) => {
-    timeoutId = setTimeout(resolve, timeoutMilliseconds);
+    timeoutId = setTimeout(() => resolve(timeoutMilliseconds), timeoutMilliseconds);
   });
 
   promise.cancel = () => {

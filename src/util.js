@@ -1,3 +1,7 @@
+export function getFunctionName(fn) {
+  return fn.name || fn.displayName || '[unnamed function]';
+}
+
 export function isPromise(object) {
   return !!(object && typeof object.then === 'function');
 }

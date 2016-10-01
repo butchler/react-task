@@ -1,22 +1,17 @@
 import React from 'react';
 import Promise from 'promise';
-import { runProc } from './proc';
+import { runAsync, runProcAsync, createProcGenerator, isCall, getCallInfo } from './proc';
+import { getFunctionName, createMappedGenerator } from './util';
 
 /**
- * A helper function to create a stateless React component that renders a Task
- * component with the given generator function.
+ * Returns an instance of Task with a key based on the function name so you don't have to set the
+ * key for every Task element yourself if you have multiple sibling Task elements.
  */
-export function task(generatorFunction) {
-  const component = props => {
-    return <Task proc={generatorFunction} {...props} />;
-  };
-
-  // If the function is named, use its name as the component's displayName for
-  // debugging purposes.
-  const procName = generatorFunction.name || generatorFunction.displayName;
-  component.displayName = `task(${procName})`;
-
-  return component;
+export function task(generatorFunction, props) {
+  const proc = generatorFunction;
+  const name = getFunctionName(proc);
+  const key = props.key ? `task(${name}, ${props.key})` : `task(${name})`;
+  return React.createElement(Task, Object.assign({}, props, { key, proc }));
 }
 
 /**
@@ -44,20 +39,32 @@ export class Task extends React.Component {
   constructor() {
     super();
 
-    // Private variables.
+    this.getProps = this.getProps.bind(this);
+    this.waitProps = this.waitProps.bind(this);
+    this.onProcDone = this.onProcDone.bind(this);
+    this.logCalls = this.logCalls.bind(this);
+    this.logResults = this.logResults.bind(this);
+
     this.onPropsReceived = null;
     this.proc = null;
-    this.boundGetProps = this.getProps.bind(this);
-    this.boundOnStep = this.onStep.bind(this);
     this.wasUnmounted = false;
+    this.isProcDone = false;
+
+    if (process.env.NODE_ENV !== 'production') {
+      this.state = {
+        log: [],
+      };
+    }
   }
 
   /**
-   * Returns a promise that resolves with the props when they match the given
-   * filter, or resolves with the current props immediately if no filter
-   * function is provided.
+   * Returns a promise that resolves with the props when they match the given filter.
    */
-  getProps(filterFn = (() => true)) {
+  waitProps(filterFn = (() => true)) {
+    if (this.onPropsReceived !== null) {
+      throw new Error('Cannot call waitProps more than once at a time.');
+    }
+
     return new Promise((resolve, reject) => {
       // Check and resolve immediately if the props already match the filter.
       if (filterFn(this.props)) {
@@ -65,12 +72,8 @@ export class Task extends React.Component {
         return;
       }
 
-      if (this.onPropsReceived !== null) {
-        throw new Error('Cannot call getProps more than once at a time.');
-      }
-
       // Check if the props match the filter whenever they change.
-      this.onPropsReceived = (nextProps) => {
+      this.onPropsReceived = nextProps => {
         if (filterFn(nextProps)) {
           resolve(nextProps);
           this.onPropsReceived = null;
@@ -79,27 +82,30 @@ export class Task extends React.Component {
     });
   }
 
-  /**
-   * Updates the state with the result of the last call for debugging purposes.
-   */
-  onStep(step) {
-    // Don't update the state if the component has already been unmounted.
-    if (!this.wasUnmounted) {
-      this.setState({ currentStep: step });
-    }
+  getProps() {
+    return this.props;
   }
 
-  start() {
-    const generator = this.props.proc(this.boundGetProps);
-    this.proc = runProc(generator, this.boundOnStep);
-    // Ensure that uncaught rejections get logged as errors.
-    this.proc.done();
+  onProcDone() {
+    this.isProcDone = true;
   }
 
-  stop() {
-    if (this.proc) {
-      this.proc.cancel();
+  logCalls(value) {
+    if (isCall(value)) {
+      const { context, fn, args } = getCallInfo(value);
+
+      const message = `called: ${getFunctionName(fn)}(${args.map(JSON.stringify).join(', ')})`;
+
+      this.state.log.push(message);
     }
+
+    return value;
+  }
+
+  logResults(value) {
+    this.state.log.push(value.result);
+
+    return value;
   }
 
   // React lifecycle methods
@@ -111,7 +117,21 @@ export class Task extends React.Component {
   //
 
   componentDidMount() {
-    this.start(this.props);
+    if (process.env.NODE_ENV === 'production') {
+      this.procPromise = runAsync(this.props.proc, this.getProps, this.waitProps);
+    } else {
+      // On non-production environments, wrap the generator so that we can log all of its calls and
+      // yields in the component state for debugging purposes.
+      let generator = this.props.proc(this.getProps, this.waitProps);
+      generator = createMappedGenerator(this.logCalls, generator);
+      generator = createProcGenerator(generator);
+      generator = createMappedGenerator(this.logResults, generator);
+
+      this.procPromise = runProcAsync(generator);
+    }
+
+    // Ensure that uncaught rejections get logged as errors.
+    this.procPromise.done(this.onProcDone, this.onProcDone);
   }
 
   componentWillReceiveProps(nextProps) {
@@ -121,18 +141,28 @@ export class Task extends React.Component {
         'using the Task component directly, or set a key prop on the Task ' +
         'component to make it mount a new component when the proc changes.');
     } else {
-      if (this.onPropsReceived !== null) {
+      if (this.onPropsReceived) {
         this.onPropsReceived(nextProps);
       }
     }
   }
 
   componentWillUnmount() {
-    this.stop();
+    this.procPromise.return();
+
+    // Log a warning if the proc doesn't end within 10 seconds.
+    if (process.env.NODE_ENV !== 'production') {
+      setTimeout(() => {
+        if (!this.isProcDone) {
+          const name = getFunctionName(this.props.proc);
+          console.warn(`Proc "${name} did not finish within 10 seconds after Task unmounted.`);
+        }
+      }, 10 * 1000);
+    }
+
     this.wasUnmounted = true;
   }
 
-  // Task components never render anything by default.
   shouldComponentUpdate() {
     return false;
   }
