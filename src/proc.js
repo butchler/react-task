@@ -1,11 +1,12 @@
 import Promise from 'promise';
 
 export const
-  RESULT_TYPE_NORMAL = 0,
-  RESULT_TYPE_ERROR  = 1,
-  RESULT_TYPE_RETURN = 2,
+  RESULT_TYPE_NORMAL = 'normal',
+  RESULT_TYPE_ERROR  = 'error',
+  RESULT_TYPE_RETURN = 'return',
   RESULT_TYPE_WAIT   = 3,
-  RESULT_TYPE_DONE   = 4;
+  RESULT_TYPE_DONE   = 4,
+  RESULT_TYPE_STOP   = 'stop';
 
 const CALL = '@@react-task/proc.call';
 
@@ -126,6 +127,130 @@ export function stepProc(generator, previousResult = INITIAL_STEP_RESULT) {
   };
 
   return promise;
+}
+
+const INITIAL_RESULT = { result: undefined, type: RESULT_TYPE_NORMAL };
+
+export function runAsync(procGenerator, initialResult = INITIAL_RESULT) {
+  if (!isGenerator(procGenerator)) {
+    throw new TypeError('runAsync expected a generator instance (not a generator function).');
+  }
+
+  return new Promise((resolve, reject) => {
+    const loop = (previousResult) => {
+      console.log('async loop', previousResult);
+
+      const { result, type } = previousResult;
+
+      if (type === RESULT_TYPE_STOP) {
+        resolve(previousResult);
+      } else if (type === RESULT_TYPE_NORMAL && isPromise(result)) {
+        result.then(
+          promiseResult => {
+            loop({
+              result: promiseResult,
+              type: RESULT_TYPE_NORMAL,
+            });
+          }, error => {
+            loop({
+              result: error,
+              type: RESULT_TYPE_ERROR,
+            });
+          }
+        );
+      } else {
+        const step = (
+          type === RESULT_TYPE_ERROR ? procGenerator.throw :
+          type === RESULT_TYPE_RETURN ? procGenerator.return :
+          procGenerator.next
+        );
+
+        const { value, done } = step(result);
+
+        if (done) {
+          // Resolve with the final result of the generator.
+          resolve(value.result);
+        } else {
+          loop(value);
+        }
+      }
+    };
+
+    loop(initialResult);
+  });
+}
+
+export function runSync(procGenerator, initialResult = INITIAL_RESULT) {
+  if (!isGenerator(procGenerator)) {
+    throw new TypeError('runSync expected a generator instance (not a generator function).');
+  }
+
+  const loop = (previousResult) => {
+    //console.log('loop', previousResult);
+
+    const { result, type } = previousResult;
+
+    if (type === RESULT_TYPE_STOP) {
+      return result;
+    }
+
+    const step = (
+      type === RESULT_TYPE_ERROR ? procGenerator.throw :
+      type === RESULT_TYPE_RETURN ? procGenerator.return :
+      procGenerator.next
+    );
+
+    const { value, done } = step(result);
+
+    if (done) {
+      // Return the final result of the generator.
+      return value.result;
+    } else {
+      return loop(value);
+    }
+  };
+
+  return loop(initialResult);
+}
+
+export function proc(generatorFunction, handleCall = defaultHandleCall) {
+  return {
+    next(result) {
+      return wrapValue(generatorFunction.next(result), handleCall);
+    },
+    throw(result) {
+      return wrapValue(generatorFunction.throw(result), handleCall);
+    },
+    return(result) {
+      return wrapValue(generatorFunction.return(result), handleCall);
+    },
+  };
+}
+
+function wrapValue({ value, done }, handleCall) {
+  return {
+    value: isCall(value) ? handleCall(value) : {
+      result: value,
+      type: RESULT_TYPE_NORMAL,
+    },
+    done,
+  };
+}
+
+function defaultHandleCall(call) {
+  try {
+    const result = executeCall(call);
+
+    return {
+      result,
+      type: RESULT_TYPE_NORMAL,
+    };
+  } catch (error) {
+    return {
+      result: error,
+      type: RESULT_TYPE_ERROR,
+    };
+  }
 }
 
 export function stepProcSynchronous(generator, previousResult = INITIAL_STEP_RESULT) {
@@ -274,8 +399,12 @@ export function isCall(object) {
   return !!(object && object[CALL]);
 }
 
+export function getCallInfo(callObject) {
+  return callObject[CALL];
+}
+
 export function executeCall(object) {
-  const call = object[CALL];
+  const call = getCallInfo(object);
 
   // Same as doing call.fn.apply(call.context, call.args), but will still work
   // even if someone mucks with the properties/prototype of call.fn.
@@ -289,8 +418,10 @@ export function isPromise(object) {
 }
 
 export function isGenerator(object) {
-  return !!(object &&
+  return !!(
+    object &&
     typeof object.next === 'function' &&
     typeof object.throw === 'function' &&
-    typeof object.return === 'function');
+    typeof object.return === 'function'
+  );
 }

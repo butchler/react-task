@@ -664,3 +664,104 @@ function forever(onCancel) {
   }
   return promise;
 }
+
+import { runSync, runAsync, proc } from './proc';
+
+describe.only('runSync', () => {
+  it('returns yielded results to generator', () => {
+    const spy = sinon.spy();
+
+    const simpleProc = function* () {
+      spy(yield 1);
+      spy(yield 'test');
+    };
+
+    runSync(proc(simpleProc()));
+
+    expect(spy.calledWith(1)).to.be.true;
+    expect(spy.calledWith('test')).to.be.true;
+  });
+
+  it('executes calls', () => {
+    const spy = sinon.spy();
+
+    const simpleProc = function* () {
+      spy(yield call(() => 1));
+      spy(yield call(x => x + 1, 1));
+    };
+
+    runSync(proc(simpleProc()));
+
+    expect(spy.calledWith(1)).to.be.true;
+    expect(spy.calledWith(2)).to.be.true;
+  });
+
+  it('lets you use custom call handler', () => {
+    const spy = sinon.spy();
+    const exec = sinon.stub();
+    exec.onFirstCall().returns({ result: 'not 1', type: RESULT_TYPE_NORMAL });
+    exec.onSecondCall().returns({ result: 'not 2', type: RESULT_TYPE_NORMAL });
+
+    const simpleProc = function* () {
+      spy(yield call(() => 1));
+      spy(yield call(x => x + 1, 1));
+    };
+
+    runSync(proc(simpleProc(), exec));
+
+    expect(spy.calledWith('not 1')).to.be.true;
+    expect(spy.calledWith('not 2')).to.be.true;
+  });
+});
+
+describe.only('runAsync', () => {
+  it('returns yielded results to generator', (done) => {
+    const spy = sinon.spy();
+
+    const simpleProc = function* () {
+      spy(yield 1);
+      spy(yield 'test');
+    };
+
+    runAsync(proc(simpleProc())).then(result => {
+      expect(spy.calledWith(1)).to.be.true;
+      expect(spy.calledWith('test')).to.be.true;
+      done();
+    });
+  });
+
+  it('waits for yielded promises', (done) => {
+    const spy = sinon.spy();
+
+    const simpleProc = function* () {
+      spy(yield Promise.resolve(1));
+      spy(yield new Promise((resolve, reject) => setTimeout(() => resolve('test'), 100)));
+    };
+
+    runAsync(proc(simpleProc())).then(result => {
+      expect(spy.calledWith(1)).to.be.true;
+      expect(spy.calledWith('test')).to.be.true;
+      done();
+    });
+  });
+
+  it('waits for calls that return promises', (done) => {
+    const spy = sinon.spy();
+    const delay = ms => {
+      return new Promise((resolve, reject) => {
+        setTimeout(() => resolve('done'), ms);
+      });
+    };
+
+    const simpleProc = function* () {
+      spy(yield Promise.resolve(1));
+      spy(yield call(delay, 100));
+    };
+
+    runAsync(proc(simpleProc())).then(result => {
+      expect(spy.calledWith(1)).to.be.true;
+      expect(spy.calledWith('done')).to.be.true;
+      done();
+    });
+  });
+});
