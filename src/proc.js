@@ -71,14 +71,14 @@ export function runProcSync(procGenerator, initialResult = INITIAL_RESULT) {
 }
 
 export function runProcAsync(procGenerator, initialResult = INITIAL_RESULT) {
-  if (!isGenerator(procGenerator)) {
-    throw new TypeError('runAsync expected a generator instance (not a generator function).');
-  }
-
   let currentPromise;
   let loop;
 
   const procPromise = new Promise((resolve, reject) => {
+    if (!isGenerator(procGenerator)) {
+      throw new TypeError('runAsync expected a generator instance (not a generator function).');
+    }
+
     loop = ({ result, type }) => {
       // Make sure any promises we might have been waiting on are cleaned up.
       if (currentPromise) {
@@ -96,6 +96,8 @@ export function runProcAsync(procGenerator, initialResult = INITIAL_RESULT) {
             result: promiseResult,
             type: RESULT_TYPE_NORMAL,
           }),
+          // If a yielded promise rejects, call procGenerator.throw(error) so that the generator
+          // function has a change to handle the error.
           error => loop({
             result: error,
             type: RESULT_TYPE_ERROR,
@@ -108,7 +110,16 @@ export function runProcAsync(procGenerator, initialResult = INITIAL_RESULT) {
           procGenerator.next
         );
 
-        const { value, done } = step(result);
+        let stepResult;
+
+        try {
+          stepResult = step(result);
+        } catch (error) {
+          reject(error);
+          return;
+        }
+
+        const { value, done } = stepResult;
 
         if (done) {
           // Resolve with the final result of the generator.
