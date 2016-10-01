@@ -5,11 +5,10 @@ import PromiseLibPromise from 'promise';
 
 import {
   isCall,
-  isPromise,
   executeCall,
-  call, callSync,
-  callMethod, callMethodSync,
-  apply, applySync,
+  call,
+  callMethod,
+  apply,
   stepProc,
   stopProc,
   runProc,
@@ -21,11 +20,13 @@ import {
   RESULT_TYPE_DONE
 } from './proc';
 
+// TODO: Move isPromise tests to separate file.
+import { isPromise } from './util';
+
 describe('isCall', () => {
-  it('works with call/callSync', () => {
+  it('works with call', () => {
     const fn = x => x;
     expect(isCall(call(fn, 1, 2, 3))).to.be.true;
-    expect(isCall(callSync(fn, 1, 2, 3))).to.be.true;
   });
 
   it('works with invalid calls', () => {
@@ -35,11 +36,10 @@ describe('isCall', () => {
     expect(isCall(call([1, 2, 3]))).to.be.true;
   });
 
-  it('works with apply/applySync', () => {
+  it('works with apply', () => {
     const fn = x => x;
     const object = {};
     expect(isCall(apply(object, fn, [1, 2, 3]))).to.be.true;
-    expect(isCall(applySync(object, fn, [1, 2, 3]))).to.be.true;
   });
 
   it('works with invalid applies', () => {
@@ -49,7 +49,7 @@ describe('isCall', () => {
     expect(isCall(apply([1, 2, 3]))).to.be.true;
   });
 
-  it('fails for anything other than call/callSync/apply/applySync', () => {
+  it('fails for anything other than call/apply', () => {
     expect(isCall()).to.be.false;
     expect(isCall({})).to.be.false;
     expect(isCall({ call: x => x })).to.be.false;
@@ -95,17 +95,15 @@ describe('isPromise', () => {
 });
 
 describe('executeCall', () => {
-  it('returns result of call/callSync', () => {
+  it('returns result of call', () => {
     const fn1 = () => true;
     expect(executeCall(call(fn1))).to.be.true;
-    expect(executeCall(callSync(fn1))).to.be.true;
 
     const fn2 = (x, y) => x + y;
     expect(executeCall(call(fn2, 1, 2))).to.be.three;
-    expect(executeCall(callSync(fn2, 1, 2))).to.be.three;
   });
 
-  it('returns result of callMethod/callMethodSync', () => {
+  it('returns result of callMethod', () => {
     const object = {
       x: 1,
       method1: () => true,
@@ -115,20 +113,17 @@ describe('executeCall', () => {
     expect(executeCall(callMethod(object, 'method2', 2))).to.be.three;
   });
 
-  it('returns result of apply/applySync', () => {
+  it('returns result of apply', () => {
     const fn1 = () => true;
     expect(executeCall(apply(null, fn1))).to.be.true;
-    expect(executeCall(applySync(null, fn1))).to.be.true;
 
     const fn2 = (x, y) => x + y;
     expect(executeCall(apply('', fn2, [1, 2]))).to.be.three;
-    expect(executeCall(applySync('', fn2, [1, 2]))).to.be.three;
 
     // Have to use non-arrow functions because this is replaced inside of arrow functions.
     const fn3 = function (y) { return this.x + y };
     const context = { x: 1 };
     expect(executeCall(apply(context, fn3, [2]))).to.be.three;
-    expect(executeCall(applySync(context, fn3, [2]))).to.be.three;
   });
 
   it('throws for anything other than a call object', () => {
@@ -262,21 +257,6 @@ describe('stepProc', () => {
         done();
       }, 10);
     }, 0);
-  });
-
-  it("doesn't wait on the promise when using callSync", (done) => {
-    let promise;
-    const getPromise = () => {
-      promise = Promise.resolve(true);
-      return promise;
-    };
-    const genFn = function* () { yield callSync(getPromise); };
-    const gen = genFn();
-
-    stepProc(gen).then(result => {
-      expect(result.value).to.equal(promise);
-      done();
-    });
   });
 
   it('rejects if generator yields anything other than a promise or call object', (done) => {
@@ -491,22 +471,13 @@ describe('runProc', () => {
     const object = {
       x: 1,
       method: function (y) { return this.x + y; },
-      returnsPromise: function () { return Promise.resolve(this.x); },
     };
-    const promise = Promise.resolve(true);
-    const returnsPromise = () => promise;
     const genFn = function* () {
       const result = [];
 
       result.push(yield call(() => 123));
 
-      const callSyncPromise = yield callSync(returnsPromise);
-      result.push(yield callSyncPromise);
-
       result.push(yield callMethod(object, 'method', 2));
-
-      const callMethodSyncPromise = yield callMethodSync(object, 'returnsPromise');
-      result.push(yield callMethodSyncPromise);
 
       result.push(yield apply(
         object,
@@ -514,23 +485,14 @@ describe('runProc', () => {
         [2, 3]
       ));
 
-      const applySyncPromise = yield applySync(
-        { result: 'result' },
-        function () { return Promise.resolve(this.result); }
-      );
-      result.push(yield applySyncPromise);
-
       return result;
     };
 
     run(genFn).then(result => {
       expect(result).to.eql([
         123,
-        true,
         3,
-        1,
         6,
-        'result'
       ]);
       done();
     });
@@ -559,6 +521,15 @@ describe('runProc', () => {
 
   it('works like stopProc if you call cancel multiple times', (done) => {
     const spy = sinon.spy();
+
+    // Returns a promise that never resolves or rejects.
+    const forever = (onCancel) => {
+      const promise = new Promise((resolve, reject) => undefined);
+      if (onCancel) {
+        promise.cancel = onCancel;
+      }
+      return promise;
+    };
 
     const genFn = function* () {
       try {
@@ -593,77 +564,7 @@ describe('runProc', () => {
       done();
     });
   });
-
-  it('cancels all callSync promises when the proc gets cancelled', (done) => {
-    const spy = sinon.spy();
-
-    const childProc = function* () {
-      // Promises callSync-ed by child/grandchild/etc processes should also be cancelled.
-      const promise = yield callSync(forever, () => spy('child'));
-      // The current promise that the child is waiting on should also be cancelled.
-      yield call(forever, () => spy('child waiting'));
-      yield promise;
-      spy('not called');
-    };
-
-    const parentProc = function* () {
-      const child = yield callSync(run, childProc);
-      const promise = yield callSync(forever, () => spy('parent'));
-      yield call(forever, () => spy('parent waiting'));
-      yield Promise.race([child, promise]);
-    };
-
-    const proc = run(parentProc);
-    proc.then(result => {
-      expect(result).to.equal(undefined);
-      expect(spy.callCount).to.equal(4);
-      expect(spy.calledWith('child')).to.be.true;
-      expect(spy.calledWith('child waiting')).to.be.true;
-      expect(spy.calledWith('parent')).to.be.true;
-      expect(spy.calledWith('parent waiting')).to.be.true;
-      done();
-    });
-    setTimeout(() => proc.cancel(), 0);
-  });
-
-  it('cancels all callSync promises when the proc ends normally', (done) => {
-    const spy = sinon.spy();
-
-    const childProc = function* () {
-      // Promises callSync-ed by child/grandchild/etc processes should also be cancelled.
-      const promise = yield callSync(forever, () => spy('child'));
-      // The current promise that the child is waiting on should also be cancelled.
-      yield call(forever, () => spy('child waiting'));
-      yield promise;
-      spy('not called');
-    };
-
-    const parentProc = function* () {
-      const child = yield callSync(run, childProc);
-      const promise = yield callSync(forever, () => spy('parent'));
-      return 'done';
-    };
-
-    const proc = run(parentProc);
-    proc.then(result => {
-      expect(result).to.equal('done');
-      expect(spy.callCount).to.equal(3);
-      expect(spy.calledWith('child')).to.be.true;
-      expect(spy.calledWith('child waiting')).to.be.true;
-      expect(spy.calledWith('parent')).to.be.true;
-      done();
-    });
-  });
 });
-
-// Returns a promise that never resolves or rejects.
-function forever(onCancel) {
-  const promise = new Promise((resolve, reject) => undefined);
-  if (onCancel) {
-    promise.cancel = onCancel;
-  }
-  return promise;
-}
 
 import { runSync, runAsync, mockCalls } from './proc';
 
