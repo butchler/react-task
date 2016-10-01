@@ -782,7 +782,7 @@ describe.only('mockCalls', () => {
       return yield call(onePlusOne);
     };
 
-    const proc = mockCalls(simpleProc, [[onePlusOne, () => 3]]);
+    const proc = mockCalls(simpleProc, { onePlusOne: () => 3 });
 
     expect(runSync(proc)).to.equal(3);
   });

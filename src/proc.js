@@ -1,4 +1,5 @@
 import Promise from 'promise';
+import { isPromise, isGenerator, makeCancellablePromise, createMappedGenerator } from './util';
 
 export const RESULT_TYPE_NORMAL = 'normal';
 export const RESULT_TYPE_ERROR  = 'error';
@@ -9,13 +10,32 @@ const CALL = '@@react-task/proc.call';
 
 const INITIAL_RESULT = { result: undefined, type: RESULT_TYPE_NORMAL };
 
-// Functions for running procs.
+// Functions for creating and running procs.
 export function runSync(procGeneratorFunction, ...args) {
-  return runProcSync(createProc(procGeneratorFunction(...args)));
+  const generator = procGeneratorFunction(...args);
+  return runProcSync(createProcGenerator(generator));
 }
 
 export function runAsync(procGeneratorFunction, ...args) {
-  return runProcAsync(createProc(procGeneratorFunction(...args)));
+  const generator = procGeneratorFunction(...args);
+  return runProcAsync(createProcGenerator(generator));
+}
+
+/**
+ * Takes a generator function and a hash of function names to mock functions and returns a new
+ * generator function that replaces all calls for the given function names with the the
+ * corresponding mock function.
+ */
+export function mockCalls(procGeneratorFunction, callMappings) {
+  return (...args) => {
+    const generator = procGeneratorFunction(...args);
+    const mapValues = value => mapCalls(callMappings, value);
+    return createMappedGenerator(mapValues, generator);
+  };
+}
+
+export function createProcGenerator(generator) {
+  return createMappedGenerator(mapProcValues, generator);
 }
 
 export function runProcSync(procGenerator, initialResult = INITIAL_RESULT) {
@@ -110,84 +130,6 @@ export function runProcAsync(procGenerator, initialResult = INITIAL_RESULT) {
   return procPromise;
 }
 
-// Function to create procs.
-export function createProc(generator) {
-  return createMappedGenerator(mapProcValues, generator);
-}
-
-export function mockCalls(procGeneratorFunction, callMappings) {
-  // TODO: Throw an error if callMappings isn't an array of arrays.
-  return (...args) => {
-    const generator = procGeneratorFunction(...args);
-    const mapValues = value => mapCalls(callMappings, value);
-    return createMappedGenerator(mapValues, generator);
-  };
-}
-
-export function createMappedGenerator(mapValue, generator) {
-  return {
-    next(yieldValue) {
-      const { value, done } = generator.next(yieldValue);
-      return { value: mapValue(value), done };
-    },
-    return(yieldValue) {
-      const { value, done } = generator.return(yieldValue);
-      return { value: mapValue(value), done };
-    },
-    throw(yieldError) {
-      const { value, done } = generator.throw(yieldError);
-      return { value: mapValue(value), done };
-    },
-  };
-}
-
-function mapProcValues(value) {
-  if (isCall(value)) {
-    // Execute calls and return their result or error.
-    try {
-      const result = executeCall(value);
-
-      return {
-        result,
-        type: RESULT_TYPE_NORMAL,
-      };
-    } catch (error) {
-      return {
-        result: error,
-        type: RESULT_TYPE_ERROR,
-      };
-    }
-  } else {
-    return {
-      result: value,
-      type: RESULT_TYPE_NORMAL,
-    };
-  }
-}
-
-function mapCalls(callMappings, value) {
-  if (isCall(value)) {
-    // Search for the function in the list of call mappings.
-    const { context, fn, args } = getCallInfo(value);
-
-    for (let i = 0; i < callMappings.length; i++) {
-      const [originalFn, mockFn] = callMappings[i];
-
-      if (
-        fn === originalFn ||
-        (typeof originalFn === 'string' && (fn.name || fn.displayName) === originalFn)
-      ) {
-        return createCall(context, mockFn, args);
-      }
-    }
-
-    // If we couldn't find any mappings for the function, just return the original call.
-    return value;
-  } else {
-    return value;
-  }
-}
-
 // Functions for creating/working with call objects.
 export function call(fn, ...args) {
   return createCall(undefined, fn, args, false);
@@ -220,48 +162,47 @@ export function executeCall(object) {
   return Function.prototype.apply.call(call.fn, call.context, call.args);
 }
 
-// Helper functions
+// Helper functions.
 function createCall(context, fn, args) {
   return { [CALL]: { context, fn, args } };
 }
 
-function isPromise(object) {
-  return !!(object && typeof object.then === 'function');
-}
+function mapProcValues(value) {
+  if (isCall(value)) {
+    // Execute calls and return their result or error.
+    try {
+      const result = executeCall(value);
 
-function isGenerator(object) {
-  return !!(
-    object &&
-    typeof object.next === 'function' &&
-    typeof object.throw === 'function' &&
-    typeof object.return === 'function'
-  );
-}
-
-function makeCancellablePromise(promise) {
-  let wasCancelled = false, wasResolved = false;
-
-  const cancellablePromise = new Promise((resolve, reject) => {
-    promise.then(
-      result => {
-        wasResolved = true;
-        !wasCancelled && resolve(result);
-      },
-      error => {
-        wasResolved = true;
-        !wasCancelled && reject(error);
-      }
-    );
-  });
-
-  cancellablePromise.cancel = () => {
-    // If the promise has a cancel method, call it, and make sure it is only called once.
-    if (!wasCancelled && !wasResolved && typeof promise.cancel === 'function') {
-      promise.cancel();
+      return {
+        result,
+        type: RESULT_TYPE_NORMAL,
+      };
+    } catch (error) {
+      return {
+        result: error,
+        type: RESULT_TYPE_ERROR,
+      };
     }
+  } else {
+    return {
+      result: value,
+      type: RESULT_TYPE_NORMAL,
+    };
+  }
+}
 
-    wasCancelled = true;
-  };
+function mapCalls(callMappings, value) {
+  if (isCall(value)) {
+    const { context, fn, args } = getCallInfo(value);
 
-  return cancellablePromise;
+    const functionName = fn.name || fn.displayName;
+
+    if (callMappings.hasOwnProperty(functionName)) {
+      return createCall(context, callMappings[functionName], args);
+    } else {
+      return value;
+    }
+  } else {
+    return value;
+  }
 }
