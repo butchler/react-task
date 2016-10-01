@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { PropTypes } from 'react';
 import Promise from 'promise';
 import { runAsync, runProcAsync, createProcGenerator, isCall, getCallInfo } from './proc';
 import { getFunctionName, createMappedGenerator } from './util';
@@ -86,7 +86,15 @@ export class Task extends React.Component {
     return this.props;
   }
 
-  onProcDone() {
+  onProcDone(result) {
+    this.props.onProcDone && this.props.onProcDone(result);
+
+    this.isProcDone = true;
+  }
+
+  onProcError(error) {
+    this.props.onProcError && this.props.onProcError(error);
+
     this.isProcDone = true;
   }
 
@@ -131,7 +139,7 @@ export class Task extends React.Component {
     }
 
     // Ensure that uncaught rejections get logged as errors.
-    this.procPromise.done(this.onProcDone, this.onProcDone);
+    this.procPromise.done(this.onProcDone, this.onProcError);
   }
 
   componentWillReceiveProps(nextProps) {
@@ -173,7 +181,9 @@ export class Task extends React.Component {
 }
 
 Task.propTypes = {
-  proc: React.PropTypes.func.isRequired,
+  proc: PropTypes.func.isRequired,
+  onProcDone: PropTypes.func,
+  onProcError: PropTypes.func,
   children: (props, propName, componentName) => {
     if (props.children) {
       return new Error('Task components should not have any children. To organize ' +
