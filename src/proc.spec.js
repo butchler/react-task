@@ -765,7 +765,7 @@ describe.only('runAsync', () => {
     });
   });
 
-  it('can be cancelled', (done) => {
+  it('can be return()ed', (done) => {
     const spy = sinon.spy();
     const onDone = sinon.spy();
     const delay = ms => {
@@ -781,17 +781,12 @@ describe.only('runAsync', () => {
 
     const promise = runAsync(simpleProc);
 
-    promise.then(onDone, onDone);
+    setTimeout(promise.return, 10);
 
-    setTimeout(promise.cancel, 10);
-
-    setTimeout(() => {
+    promise.then(() => {
       expect(spy.calledWith(1)).to.be.true;
       expect(spy.calledWith('done')).to.be.false;
-      // The promise returned by runAsync will not resolve or reject if cancel it before it
-      // finishes.
-      expect(onDone.called).to.be.false;
       done();
-    }, 200);
+    });
   });
 });

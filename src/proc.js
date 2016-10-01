@@ -23,9 +23,7 @@ export function runProcSync(procGenerator, initialResult = INITIAL_RESULT) {
     throw new TypeError('runSync expected a generator instance (not a generator function).');
   }
 
-  const loop = (previousResult) => {
-    const { result, type } = previousResult;
-
+  const loop = ({ result, type }) => {
     if (type === RESULT_TYPE_STOP) {
       return result;
     }
@@ -54,44 +52,33 @@ export function runProcAsync(procGenerator, initialResult = INITIAL_RESULT) {
     throw new TypeError('runAsync expected a generator instance (not a generator function).');
   }
 
-  let onCancel;
-  let wasCancelled = false;
+  let currentPromise;
+  let loop;
 
-  const promise = new Promise((resolve, reject) => {
-    const loop = (previousResult) => {
-      // NOTE: If you cancel the proc before it finishes, it will NOT resolve or reject.
-      if (wasCancelled) {
-        return;
+  const procPromise = new Promise((resolve, reject) => {
+    loop = ({ result, type }) => {
+      console.log('loop', { result, type });
+
+      // Make sure any promises we might have been waiting on are cleaned up.
+      if (currentPromise) {
+        currentPromise.cancel();
+        currentPromise = undefined;
       }
 
-      const { result, type } = previousResult;
-
       if (type === RESULT_TYPE_STOP) {
-        resolve(previousResult);
+        resolve(result);
       } else if (type === RESULT_TYPE_NORMAL && isPromise(result)) {
-        // If the promise has a cancel() method, call it when the promise returned by runAsync is
-        // cancelled.
-        if (typeof result.cancel === 'function') {
-          onCancel = result.cancel;
-        }
+        currentPromise = makeCancellablePromise(result);
 
-        result.then(
-          promiseResult => {
-            onCancel = undefined;
-
-            loop({
-              result: promiseResult,
-              type: RESULT_TYPE_NORMAL,
-            });
-          },
-          error => {
-            onCancel = undefined;
-
-            loop({
-              result: error,
-              type: RESULT_TYPE_ERROR,
-            });
-          }
+        currentPromise.then(
+          promiseResult => loop({
+            result: promiseResult,
+            type: RESULT_TYPE_NORMAL,
+          }),
+          error => loop({
+            result: error,
+            type: RESULT_TYPE_ERROR,
+          })
         );
       } else {
         const step = (
@@ -114,15 +101,15 @@ export function runProcAsync(procGenerator, initialResult = INITIAL_RESULT) {
     loop(initialResult);
   });
 
-  promise.cancel = () => {
-    if (onCancel) {
-      onCancel();
-      onCancel = undefined;
-    }
-    wasCancelled = true;
+  procPromise.return = () => {
+    loop({ result: undefined, type: RESULT_TYPE_RETURN });
   };
 
-  return promise;
+  procPromise.stop = () => {
+    loop({ result: undefined, type: RESULT_TYPE_STOP });
+  };
+
+  return procPromise;
 }
 
 // Function to create procs.
@@ -150,7 +137,7 @@ function wrapProcValue({ value, done }, handleCall) {
   };
 }
 
-function defaultHandleCall(call) {
+export function defaultHandleCall(call) {
   try {
     const result = executeCall(call);
 
@@ -214,4 +201,32 @@ function isGenerator(object) {
     typeof object.throw === 'function' &&
     typeof object.return === 'function'
   );
+}
+
+function makeCancellablePromise(promise) {
+  let wasCancelled = false, wasResolved = false;
+
+  const cancellablePromise = new Promise((resolve, reject) => {
+    promise.then(
+      result => {
+        wasResolved = true;
+        !wasCancelled && resolve(result);
+      },
+      error => {
+        wasResolved = true;
+        !wasCancelled && reject(error);
+      }
+    );
+  });
+
+  cancellablePromise.cancel = () => {
+    // If the promise has a cancel method, call it, and make sure it is only called once.
+    if (!wasCancelled && !wasResolved && typeof promise.cancel === 'function') {
+      promise.cancel();
+    }
+
+    wasCancelled = true;
+  };
+
+  return cancellablePromise;
 }
