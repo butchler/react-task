@@ -110,7 +110,7 @@ export class Task extends React.Component {
       throw new Error('Cannot call waitProps more than once at a time.');
     }
 
-    return new Promise((resolve, reject) => {
+    const promise = new Promise((resolve, reject) => {
       // Check and resolve immediately if the props already match the filter.
       if (filterFn(this.props)) {
         resolve(this.props);
@@ -125,6 +125,10 @@ export class Task extends React.Component {
         }
       };
     });
+
+    promise.cancel = () => this.onPropsReceived = null;
+
+    return promise;
   }
 
   getProps() {
