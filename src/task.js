@@ -1,4 +1,5 @@
 import React, { PropTypes } from 'react';
+import ReactDOM from 'react-dom';
 import Promise from 'promise';
 import { runAsync, runProcAsync, createProcGenerator, isCall, getCallInfo } from './proc';
 import { getFunctionName, createMappedGenerator } from './util';
@@ -15,6 +16,53 @@ export function task(generatorFunction, props) {
 }
 
 /**
+ * Takes a function that takes props and returns a list of Task elements, and returns a function
+ * that takes a function that takes a component and returns a component that renders that component
+ * and starts the given tasks, without actually inserting the Task elements into the DOM.
+ */
+export function withTasks(mapPropsToTasks) {
+  return component => {
+    const wrapper = class WithTasks extends React.Component {
+      constructor() {
+        super();
+
+        this.container = null;
+      }
+
+      componentDidMount() {
+        this.container = document.createElement('div');
+        updateTasks(this.props);
+      }
+
+      componentDidUpdate() {
+        updateTasks(this.props);
+      }
+
+      componentWillUnmount() {
+        ReactDOM.unmountComponentAtNode(this.container);
+      }
+
+      updateTasks() {
+        ReactDOM.render(
+          <div>
+            {mapPropsToTasks(props)}
+          </div>,
+          this.container
+        );
+      }
+
+      render() {
+        return <component {...this.props} />;
+      }
+    };
+
+    wrapper.displayName = `WithTasks(${component.displayName || component.name || 'Component'})`;
+
+    return wrapper;
+  };
+}
+
+/**
  * <Task proc={...} ... />
  *
  * A Task component starts a Proc (which is basically a background process that
@@ -22,17 +70,14 @@ export function task(generatorFunction, props) {
  * gets unmounted (or when the value of the proc prop gets changed).
  *
  * The generator function will get passed a `getProps` function, which returns a
- * promise that resolves with the component's current props. If you pass a
- * function to the getProps function, the props will be passed to that function
- * and the promise returned by getProps will only resolve once that function
- * returns a truthy value.
+ * promise that resolves with the component's current props.
  *
  * NOTE: A Task will only stop its Proc when it gets unmounted or the proc prop
  * is changed. To restart a Task with new props, pass a unique "key" prop, which
  * will force React to unmount the Task when the key changes.
  *
  * Alternatively, you can use the this.getProps() method (which is also passed
- * as the second argument to he generator function) to get the current state of
+ * as the second argument to the generator function) to get the current state of
  * the Task's props in the middle of the Task's execution.
  */
 export class Task extends React.Component {
