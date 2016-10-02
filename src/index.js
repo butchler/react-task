@@ -1,2 +1,3 @@
-export { task } from './task';
-export { call, callSync, callMethod, callMethodSync, apply, applySync, run } from './proc';
+export { task, withTasks } from './task';
+export { call, callMethod, apply } from './proc';
+export { delay } from './promises';
