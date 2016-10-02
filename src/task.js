@@ -8,7 +8,7 @@ import { getFunctionName, createMappedGenerator } from './util';
  * Returns an instance of Task with a key based on the function name so you don't have to set the
  * key for every Task element yourself if you have multiple sibling Task elements.
  */
-export function task(generatorFunction, props) {
+export function task(generatorFunction, props = {}) {
   const proc = generatorFunction;
   const name = getFunctionName(proc);
   const key = props.key ? `task(${name}, ${props.key})` : `task(${name})`;
