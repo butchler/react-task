@@ -21,7 +21,7 @@ export function task(generatorFunction, props = {}) {
  * and starts the given tasks, without actually inserting the Task elements into the DOM.
  */
 export function withTasks(mapPropsToTasks) {
-  return component => {
+  return Component => {
     const wrapper = class WithTasks extends React.Component {
       constructor() {
         super();
@@ -31,11 +31,11 @@ export function withTasks(mapPropsToTasks) {
 
       componentDidMount() {
         this.container = document.createElement('div');
-        updateTasks(this.props);
+        this.updateTasks(this.props);
       }
 
       componentDidUpdate() {
-        updateTasks(this.props);
+        this.updateTasks(this.props);
       }
 
       componentWillUnmount() {
@@ -45,18 +45,18 @@ export function withTasks(mapPropsToTasks) {
       updateTasks() {
         ReactDOM.render(
           <div>
-            {mapPropsToTasks(props)}
+            {mapPropsToTasks(this.props)}
           </div>,
           this.container
         );
       }
 
       render() {
-        return <component {...this.props} />;
+        return <Component {...this.props} />;
       }
     };
 
-    wrapper.displayName = `WithTasks(${component.displayName || component.name || 'Component'})`;
+    wrapper.displayName = `WithTasks(${Component.displayName || Component.name || 'Component'})`;
 
     return wrapper;
   };
@@ -89,6 +89,8 @@ export class Task extends React.Component {
     this.onProcDone = this.onProcDone.bind(this);
     this.logCalls = this.logCalls.bind(this);
     this.logResults = this.logResults.bind(this);
+    this.onProcDone = this.onProcDone.bind(this);
+    this.onProcError = this.onProcError.bind(this);
 
     this.onPropsReceived = null;
     this.proc = null;
