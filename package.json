@@ -7,7 +7,7 @@
     "prepublish": "npm run clean && npm run build",
     "test": "karma start",
     "dev-server": "webpack-dev-server -d --config examples/webpack.config.js --inline --content-base examples",
-    "clean": "rm -f index.js proc.js task.js test.js promises.js",
+    "clean": "rm -f index.js proc.js task.js test.js promises.js util.js",
     "build": "babel src --ignore *.spec.js --out-dir ."
   },
   "author": "Adam Buechler",
