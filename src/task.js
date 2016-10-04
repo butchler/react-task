@@ -153,7 +153,7 @@ export class Task extends React.Component {
     if (isCall(value)) {
       const { context, fn, args } = getCallInfo(value);
 
-      const message = `called: ${getFunctionName(fn)}(${args.map(JSON.stringify).join(', ')})`;
+      const message = `called: ${getFunctionName(fn)}(${args.map(String).join(', ')})`;
 
       this.state.log.push(message);
     }
