@@ -21,8 +21,8 @@ export function task(generatorFunction, props = {}) {
  * and starts the given tasks, without actually inserting the Task elements into the DOM.
  */
 export function withTasks(mapPropsToTasks) {
-  return Component => {
-    const wrapper = class WithTasks extends React.Component {
+  return WrappedComponent => {
+    class WithTasks extends React.Component {
       constructor() {
         super();
 
@@ -52,13 +52,13 @@ export function withTasks(mapPropsToTasks) {
       }
 
       render() {
-        return <Component {...this.props} />;
+        return <WrappedComponent {...this.props} />;
       }
     };
 
-    wrapper.displayName = `WithTasks(${Component.displayName || Component.name || 'Component'})`;
+    WithTasks.displayName = `WithTasks(${WrappedComponent.displayName || WrappedComponent.name || 'Component'})`;
 
-    return wrapper;
+    return WithTasks;
   };
 }
 
