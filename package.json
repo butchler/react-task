@@ -17,8 +17,6 @@
   },
   "license": "ISC",
   "dependencies": {
-    "deep-equal": "^1.0.0",
-    "karma-mocha-reporter": "^2.2.0",
     "promise": "^7.0.0",
     "react": "^15.0.0"
   },
@@ -37,11 +35,13 @@
     "karma-sinon": "^1.0.5",
     "karma-sourcemap-loader": "^0.3.7",
     "karma-webpack": "^1.7.0",
+    "karma-mocha-reporter": "^2.2.0",
     "mocha": "^3.0.0",
     "react-addons-test-utils": "^15.2.1",
     "react-dom": "^15.2.1",
     "sinon": "^1.17.5",
     "webpack": "^1.13.1",
-    "webpack-dev-server": "^1.14.1"
+    "webpack-dev-server": "^1.14.1",
+    "deep-equal": "^1.0.0"
   }
 }
