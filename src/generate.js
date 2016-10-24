@@ -1,9 +1,8 @@
 import Observable from 'zen-observable';
-import Promise from 'es6-promise';
 
-function generate(inputObservables, generatorFunction) {
+export default function generate(inputObservables, generatorFunction) {
   if (typeof generatorFunction === 'undefined') {
-    return generate([], (nextInputs, nextOutput) => generatorFunction(nextOutput));
+    return generate([], (nextInputs, nextOutput) => inputObservables(nextOutput));
   }
 
   return new Observable(observer => {
@@ -32,6 +31,9 @@ function generate(inputObservables, generatorFunction) {
       }
 
       if (result.done) {
+        // Allow the generator to execute its finally block if it has one.
+        // TODO: Is this really needed?
+        generator.return();
         // Stop execution after sending the last value when the generator is done.
         observer.complete();
         return;
@@ -51,14 +53,14 @@ function generate(inputObservables, generatorFunction) {
       } else if (isPromise(nextValue)) {
         // If a promise is yielded, wait until it completes and return the value or throw the
         // error.
-        Promise.resolve(nextValue).then(
+        nextValue.then(
           value => continueGenerator(value, false),
           error => continueGenerator(error, true)
         );
       } else {
         // For all other values, just send the value back to the generator and keep on executing
         // immediately.
-        continueGenerator(nextValue, false):
+        continueGenerator(nextValue, false);
       }
     };
 
@@ -121,7 +123,9 @@ class PromiseStream {
 
 function isObservable(object) {
   return object && typeof (
-    (typeof Symbol === 'function' && object[Symbol.observable]) || object['@@observable']
+    (typeof Symbol === 'function' && object[Symbol.observable]) ||
+      object['@@observable'] ||
+      object.subscribe
   ) === 'function';
 }
 
