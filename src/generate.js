@@ -122,13 +122,13 @@ class PromiseStream {
 }
 
 function isObservable(object) {
-  return object && typeof (
+  return Boolean(object && typeof (
     (typeof Symbol === 'function' && object[Symbol.observable]) ||
       object['@@observable'] ||
       object.subscribe
-  ) === 'function';
+  ) === 'function');
 }
 
 function isPromise(object) {
-  return object && typeof object.then === 'function';
+  return Boolean(object && typeof object.then === 'function');
 }
