@@ -1,7 +1,7 @@
 import React from 'react';
 import TaskRunner from './TaskRunner';
 
-function withTasks(mapPropsToTasks) {
+export default function withTasks(mapPropsToTasks) {
   return WrappedComponent => {
     class WithTasks extends React.Component {
       constructor() {
@@ -16,6 +16,10 @@ function withTasks(mapPropsToTasks) {
 
       componentDidUpdate() {
         this.updateTasks();
+      }
+
+      componentWillUnmount() {
+        this.taskRunner.clearTasks();
       }
 
       updateTasks() {
@@ -33,4 +37,8 @@ function withTasks(mapPropsToTasks) {
 
     return WithTasks;
   };
+}
+
+function getComponentName(component) {
+  return component.displayName || component.name || 'Component';
 }

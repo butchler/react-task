@@ -31,9 +31,6 @@ export default function generate(inputObservables, generatorFunction) {
       }
 
       if (result.done) {
-        // Allow the generator to execute its finally block if it has one.
-        // TODO: Is this really needed?
-        generator.return();
         // Stop execution after sending the last value when the generator is done.
         observer.complete();
         return;
@@ -68,6 +65,9 @@ export default function generate(inputObservables, generatorFunction) {
     continueGenerator(undefined, false);
 
     return () => {
+      // Allow the generator to execute its finally block if it has one.
+      generator.return();
+
       inputSubscriptions.forEach(subscription => subscription.unsubscribe());
 
       if (yieldSubscription) {

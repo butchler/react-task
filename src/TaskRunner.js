@@ -14,7 +14,7 @@ export default class TaskRunner {
 
     // Stop old tasks.
     Object.keys(this.taskSet).forEach(key => {
-      if (!taskDefinitionSet::has(key)) {
+      if (!taskDefinitions.hasOwnProperty(key)) {
         this.taskSet[key].stop();
         delete this.taskSet[key];
       }
@@ -31,6 +31,10 @@ export default class TaskRunner {
       }
     });
   }
+
+  clearTasks() {
+    this.setTasks([]);
+  }
 }
 
 function mapTaskDefinitionArrayToSet(taskDefinitionArray = []) {
@@ -40,7 +44,7 @@ function mapTaskDefinitionArrayToSet(taskDefinitionArray = []) {
     if (taskDefinition) {
       const taskKey = taskDefinition.key;
 
-      if (taskSet::has(taskKey)) {
+      if (taskSet.hasOwnProperty(taskKey)) {
         throw new Error('Two tasks in the same TaskRunner cannot share the same key.');
       } else {
         taskSet[taskKey] = taskDefinition;

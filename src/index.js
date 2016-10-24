@@ -1,3 +1,4 @@
-export task from './task';
-export withTasks from './withTasks';
-export TaskRunner from './TaskRunner';
+export { task } from './Task';
+import withTasks from './withTasks';
+import TaskRunner from './TaskRunner';
+export { withTasks, TaskRunner };

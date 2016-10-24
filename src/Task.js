@@ -1,5 +1,14 @@
 import Observable from 'zen-observable';
 
+export function task(getObservable, props = {}, options = {}) {
+  return {
+    getObservable,
+    props,
+    key: options.key || getObservable.name || 'unnamed function',
+    shouldRestart: options.shouldRestart || (() => false),
+  };
+}
+
 export default class Task {
   constructor(taskDefinition) {
     this.definition = taskDefinition;
