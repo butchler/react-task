@@ -20,7 +20,8 @@
     "deep-equal": "^1.0.0",
     "karma-mocha-reporter": "^2.2.0",
     "promise": "^7.0.0",
-    "react": "^15.0.0"
+    "react": "^15.0.0",
+    "zen-observable": "^0.3.0"
   },
   "devDependencies": {
     "babel-cli": "^6.11.4",

@@ -1,49 +1,44 @@
+import Observable from 'zen-observable';
+
 export default class Task {
   constructor(taskDefinition) {
     this.definition = taskDefinition;
     this.unsubscribe = null;
     this.propsObservers = {};
-    this.lastObserverId = 0;
+    this.nextObserverId = 0;
 
     this.getProps = () => this.definition.props;
     // Make a subscriber that can be used to make an observable of the props.
-    this.subscribeProps = observer => {
-      const observerId = this.lastObserverId;
-      this.lastObserverId += 1;
+    this.prop$ = new Observable(observer => {
+      const observerId = this.nextObserverId;
+      this.nextObserverId += 1;
 
       this.propsObservers[observerId] = observer;
 
+      // Immediately send the current props, and send new props every time update() is called.
       observer.next(this.getProps());
 
       return () => { delete this.propsObservers[observerId]; }
-    };
+    });
 
     this.start();
   }
 
   start() {
-    const observable = this.definition.getObservable(this.getProps, this.subscribeProps);
+    const observable = this.definition.getObservable(this.getProps, this.prop$);
 
-    const unsubscriber = this.definition.observable.subscribe(
-      () => null,
-      error => throw error,
-      () => { this.unsubscribe = null }
-    );
-
-    if (unsubscriber && typeof unsubscriber.unsubscribe === 'function') {
-      this.unsubscribe = unsubscriber.unsubscribe;
-    } else if (typeof unsubscribe === 'function') {
-      this.unsubscribe = unsubscriber;
-    } else if (unsubscriber !== null && unsubscriber !== undefined) {
-      throw new TypeError('Expected Observable.subscribe to return a Subscription, an unsubscribe function, or null/undefined.');
-    }
+    this.subscription = observable.subscribe({
+      next() {},
+      error(error) { throw error; },
+      complete() { this.unsubscribe = null; },
+    });
   }
 
   update(nextDefinition) {
     const previousDefinition = this.definition;
     this.definition = nextDefinition;
 
-    if (nextDefinition.shouldRestart(previousDefinition.props, this.definition.props)) {
+    if (this.definition.shouldRestart(previousDefinition.props, this.definition.props)) {
       // Restart the task.
       this.stop();
       this.start();
@@ -56,17 +51,7 @@ export default class Task {
   }
 
   stop() {
-    // Clean up props subscribers.
-    Object.keys(this.propsObservers).forEach(key => {
-      this.propsObservers[key].complete();
-      delete this.propsObservers[key];
-    });
-    this.lastObserverId = 0;
-
     // Clean up observable.
-    if (this.unsubscribe) {
-      this.unsubscribe();
-      this.unsubscribe = null;
-    }
+    this.subscription.unsubscribe();
   }
 }
