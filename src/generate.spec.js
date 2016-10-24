@@ -1,4 +1,6 @@
+import 'babel-polyfill';
 import generate from './generate';
+import Observable from 'zen-observable';
 
 function delay(ms) {
   return new Observable(observer => {
@@ -8,12 +10,6 @@ function delay(ms) {
     }, ms);
 
     return () => clearTimeout(timeout);
-  });
-}
-
-function promiseDelay(ms) {
-  return new Promise((resolve, reject) => {
-    setTimeout(() => resolve(ms), ms);
   });
 }
 
@@ -30,13 +26,12 @@ function interval(ms) {
   });
 }
 
-describe.only('generate', () => {
-  it('works', (done) => {
+describe('generate', () => {
+  it.only('works', (done) => {
     generate(function* (output) {
       output(1);
       output(yield delay(500));
       output(3);
-      output(yield promiseDelay(500));
       done();
     }).subscribe(value => console.log(value));
   });
