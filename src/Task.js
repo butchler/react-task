@@ -12,15 +12,15 @@ export function task(getObservable, props = {}, options = {}) {
 export default class Task {
   constructor(taskDefinition) {
     this.definition = taskDefinition;
-    this.unsubscribe = null;
-    this.propsObservers = {};
-    this.nextObserverId = 0;
 
     this.getProps = () => this.definition.props;
+
     // Make a subscriber that can be used to make an observable of the props.
+    this.propsObservers = {};
+    const nextObserverId = 0;
     this.prop$ = new Observable(observer => {
-      const observerId = this.nextObserverId;
-      this.nextObserverId += 1;
+      const observerId = nextObserverId;
+      nextObserverId += 1;
 
       this.propsObservers[observerId] = observer;
 
@@ -36,11 +36,9 @@ export default class Task {
   start() {
     const observable = this.definition.getObservable(this.getProps, this.prop$);
 
-    this.subscription = observable.subscribe({
-      next() {},
-      error(error) { throw error; },
-      complete() { this.unsubscribe = null; },
-    });
+    // Just subscribe to the observable for its side effects, don't actually do anything with the
+    // outputs.
+    this.subscription = observable.subscribe({});
   }
 
   update(nextDefinition) {
