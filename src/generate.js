@@ -84,7 +84,7 @@ class ObserverStream {
     return new Observable(observer => {
       this.onNext = value => { observer.next(value); observer.complete(); };
       this.onError = error => observer.error(error);
-      this.onComplete = () => observer.complete();
+      this.onComplete = () => { observer.next(COMPLETE); observer.complete(); };
     });
   }
 
@@ -97,10 +97,11 @@ class ObserverStream {
   }
 
   complete() {
-    // TODO: Maybe return a Symbol?
     this.onComplete && this.onComplete();
   }
 }
+
+export const COMPLETE = Object.freeze({});
 
 function isObservable(object) {
   return Boolean(object && typeof (
