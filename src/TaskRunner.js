@@ -9,8 +9,22 @@ export default class TaskRunner {
     return this.taskSet;
   }
 
-  setTasks(taskDefinitionArray) {
-    const taskDefinitions = mapTaskDefinitionArrayToSet(taskDefinitionArray);
+  setTasks(taskDefinitionArray = []) {
+    const taskDefinitions = {};
+
+    // Convert the task definition array to a map of task key to task definition, filtering out
+    // falsey values.
+    taskDefinitionArray.forEach(taskDefinition => {
+      if (taskDefinition) {
+        const taskKey = taskDefinition.key;
+
+        if (taskDefinitions.hasOwnProperty(taskKey)) {
+          throw new Error('Two tasks in the same TaskRunner cannot share the same key.');
+        } else {
+          taskDefinitions[taskKey] = taskDefinition;
+        }
+      }
+    });
 
     // Stop old tasks.
     Object.keys(this.taskSet).forEach(key => {
@@ -33,24 +47,6 @@ export default class TaskRunner {
   }
 
   clearTasks() {
-    this.setTasks([]);
+    this.setTasks();
   }
-}
-
-function mapTaskDefinitionArrayToSet(taskDefinitionArray = []) {
-  const taskSet = {};
-
-  taskDefinitionArray.forEach(taskDefinition => {
-    if (taskDefinition) {
-      const taskKey = taskDefinition.key;
-
-      if (taskSet.hasOwnProperty(taskKey)) {
-        throw new Error('Two tasks in the same TaskRunner cannot share the same key.');
-      } else {
-        taskSet[taskKey] = taskDefinition;
-      }
-    }
-  });
-
-  return taskSet;
 }

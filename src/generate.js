@@ -31,7 +31,7 @@ export default function generate(inputObservables, generatorFunction) {
       }
 
       if (result.done) {
-        // Stop execution after sending the last value when the generator is done.
+        // Stop execution when the generator is done.
         observer.complete();
         return;
       }
