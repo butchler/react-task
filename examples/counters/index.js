@@ -4,9 +4,8 @@ import React from 'react';
 import ReactDOM from 'react-dom';
 import deepEqual from 'deep-equal';
 
-import { task, call, callMethod } from 'src';
-import { delay } from 'src/promises';
 import { mockCalls, runSync, PROC_RETURN } from 'src/proc';
+import Interval from 'src/Interval';
 
 const state = { counters: [] };
 const appContainer = document.getElementById('app-container');
@@ -26,7 +25,7 @@ function App({ state }) {
           * the redux-counters example, the Tasks and UI are rendered completely independently. You
           * are free to organize the tasks how you want.
           */}
-        {task(counterProc, { index })}
+        <CounterTask index={index} />
       </li>
     );
   });
@@ -40,20 +39,20 @@ function App({ state }) {
   );
 }
 
-function* counterProc(getProps) {
-  try {
-    const { index } = getProps();
+class CounterTask extends React.Component {
+  constructor() {
+    super()
 
-    // It's okay to have an infinite loop inside a task as long as it yields
-    // inside the loop. The Proc running the task will be stopped when the Task
-    // component gets unmounted.
-    while (true) {
-      yield call(delay, 1000);
-      yield call(incrementCounter, index);
-    }
-  } finally {
-    // Use a finally block to perform clean up when a Task gets stopped.
-    yield callMethod(console, 'log', 'Task was unmounted and stopped.');
+    this.onInterval = () => incrementCounter(this.props.index);
+  }
+
+  componentWillUnmount() {
+    // Use componentWillUnmount to perform cleanup.
+    console.log('Task was unmounted and stopped.');
+  }
+
+  render() {
+    return <Interval onInterval={this.onInterval} ms={1000} />;
   }
 }
 
@@ -84,39 +83,9 @@ function removeCounter(id) {
 };
 
 function tests() {
-  // To test a single Task, you can iterate through its generator and compare
-  // against the call objects it yields, just like Redux Sagas, but simpler
-  // because Proc only supports call/apply effects:
-  //
-  // We can just pass a fake getProps function in since we'll fake its results
-  // using Generator.next() anyway.
-  const getProps = () => ({ index: 123 });
-  const gen = counterProc(getProps);
-
-  for (let i = 0; i < 10; i++) {
-    assert(deepEqual(gen.next().value, call(delay, 1000)));
-    assert(deepEqual(gen.next().value, call(incrementCounter, 123)));
-  }
-
-  // Rather than testing the generator directly, a better way to test procs is to use the
-  // mockCalls() helper in react-task/proc to mock the functions that can cause side effects:
-  let returned = false;
-  const mockedProc = mockCalls(counterProc, {
-    delay: () => 'do nothing',
-    // Returning the value PROC_RETURN will cause the proc to return.
-    incrementCounter: index => index === 123 && PROC_RETURN,
-    log: () => returned = true,
-  });
-
-  runSync(mockedProc, getProps);
-
-  assert(returned);
-}
-
-function assert(value) {
-  if (!value) {
-    throw new Error('Assertion failed');
-  }
+  // TODO: To test, use React's shallow rendering, or actually mount the task component with
+  // something like enzyme. It maybe also be useful to use something like sinon to mock the passage
+  // of time or XMLHttpRequests, etc.
 }
 
 render();
